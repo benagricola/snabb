@@ -21,7 +21,7 @@ local long_opts = {
 }
 
 local function fatal(msg,...)
-   print('ERROR: ' .. msg:format(unpack(arg)))
+   print('ERROR: ' .. msg:format(...))
    main.exit(1)
 end
 
