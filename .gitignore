@@ -4,6 +4,7 @@ obj
 *.so
 *.o
 *#
+*.sw*
 /src/snabbswitch
 /src/snabb
 /src/testlog
