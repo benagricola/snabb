@@ -1,5 +1,7 @@
 module(..., package.seeall)
 
+local S             = require("syscall")
+
 local app           = require("core.app")
 local app_now       = app.now
 local datagram      = require("lib.protocol.datagram")
@@ -42,6 +44,8 @@ function Detector:new (arg)
     local conf = arg and config.parse_app_arg(arg) or {}
 
     local o = {
+        config_file_path = conf.config_file_path,
+        config_loaded = 0, -- Last time config was loaded
         last_report   = nil,
         rules         = conf.rules,
         bucket_period = 5,
@@ -51,43 +55,11 @@ function Detector:new (arg)
 
     self = setmetatable(o, {__index = Detector})
 
-    for rule_num, rule in pairs(self.rules) do
-        print("Rule '" .. rule.filter .. "' applied")
-        -- compile the filter
-        local filter = pf.compile_filter(rule.filter)
-        assert(filter)
-        rule.cfilter = filter
+    self:read_config()
 
-        -- use default burst value of 2*rate
-        if rule.pps_burst_rate == nil and rule.pps_rate then
-            rule.pps_burst_rate = 2 * rule.pps_rate
-        end
-        if rule.bps_burst_rate == nil and rule.bps_rate then
-            rule.bps_burst_rate = 2 * rule.bps_rate
-        end
-
-        -- Initialise rule-specific counters
-        rule.avg_pps = 0
-        rule.avg_bps = 0
-        rule.pps = 0
-        rule.bps = 0
-        rule.pps_bucket = 0
-        rule.bps_bucket = 0
-
-
-
-        rule.last_time  = 0
-        rule.in_violation   = false
-        rule.first_violated = 0
-        rule.last_violated  = 0
-
-        rule.exp_value = math_exp(-self.bucket_period/self.ewma_period)
-    end
 
     self.parsed_pps = 0
     self.parsed_bps = 0
-
-    self.rule_count = #self.rules
 
     -- datagram object for reuse
     self.d = datagram:new()
@@ -111,10 +83,62 @@ function Detector:new (arg)
         'repeating'
     ))
 
+    timer.activate(timer.new(
+        "periodic",
+        function()
+            self:read_config()
+        end,
+        30 * 1e9,
+        'repeating'
+    ))
 
     return self
 end
 
+function Detector:read_config()
+    local stat = S.stat(self.config_file_path)
+    if stat.mtime ~= self.config_loaded then
+        local cfg_file = assert(io.open(self.config_file_path, "r"))
+        local cfg_raw  = cfg_file:read("*all")
+        self.config_loaded = stat.mtime
+        local cfg_json = json.decode(cfg_raw)
+        self:parse_config(cfg_json)
+    end
+end
+
+function Detector:parse_config(cfg)
+    for rule_num, rule in pairs(cfg.rules) do
+        print("Compiling rule '" .. rule.filter .. "'")
+        -- compile the filter
+        local filter = pf.compile_filter(rule.filter)
+        assert(filter)
+        rule.cfilter = filter
+
+        -- use default burst value of 2*rate
+        if rule.pps_burst_rate == nil and rule.pps_rate then
+            rule.pps_burst_rate = 2 * rule.pps_rate
+        end
+        if rule.bps_burst_rate == nil and rule.bps_rate then
+            rule.bps_burst_rate = 2 * rule.bps_rate
+        end
+
+        -- Initialise rule-specific counters
+        rule.avg_pps = 0
+        rule.avg_bps = 0
+        rule.pps = 0
+        rule.bps = 0
+        rule.pps_bucket = 0
+        rule.bps_bucket = 0
+
+        rule.last_time  = 0
+        rule.in_violation   = false
+        rule.first_violated = 0
+        rule.last_violated  = 0
+
+        rule.exp_value = math_exp(-self.bucket_period/self.ewma_period)
+    end
+    self.rule_count = #self.rules
+end
 
 function Detector:periodic()
     for rule_num, rule in pairs(self.rules) do
