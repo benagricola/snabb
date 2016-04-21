@@ -29,7 +29,9 @@ local math_floor    = math.floor
 local math_ceil     = math.ceil
 local math_abs      = math.abs
 local math_exp      = math.exp
-local json_encode   = require("lib.json").encode
+local json          = require("lib.json")
+local json_encode   = json.encode
+local json_decode   = json.decode
 
 local C = ffi.C
 local mask = ffi.C.LINK_RING_SIZE-1
