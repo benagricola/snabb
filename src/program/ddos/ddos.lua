@@ -104,6 +104,7 @@ function run (args)
         end
 
     end
+
     engine.busywait = opt.busywait
     engine.configure(c)
     engine.main({report = {showlinks=true}})
