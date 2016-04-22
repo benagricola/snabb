@@ -32,7 +32,6 @@ local math_abs      = math.abs
 local math_exp      = math.exp
 local json          = require("lib.json")
 local json_decode   = json.decode
-local json_encode   = json.encode
 local msgpack       = require("lib.msgpack")
 local m_pack        = msgpack.pack
 local m_unpack      = msgpack.unpack
@@ -42,6 +41,11 @@ local mask = ffi.C.LINK_RING_SIZE-1
 
 require("core.link_h")
 
+local function info(msg,...)
+    local now = tonumber(app_now())
+    local fmt = '[%d] INFO: %s'
+    print(fmt:format(now), msg:format(...))
+end
 
 Detector = {}
 
@@ -61,10 +65,11 @@ function Detector:new (arg)
 
     self = setmetatable(o, {__index = Detector})
 
-    print("Reading config...")
+    info("Reading initial config...")
     self:read_config()
 
-    print("Setting up shared memory...")
+    info("Setting up shared memory...")
+
     -- Initialise shared memory file containing
     self.shm_status = shm.create("/detector/status", "const char[]")
 
