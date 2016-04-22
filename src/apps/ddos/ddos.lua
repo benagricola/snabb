@@ -152,6 +152,7 @@ function Detector:parse_config(cfg)
         rule.last_violated  = 0
 
         rule.exp_value = math_exp(-self.bucket_period/self.ewma_period)
+        self.rules[rule_num] = rule
     end
     self.rule_count = #self.rules
 end
