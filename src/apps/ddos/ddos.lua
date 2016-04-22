@@ -131,7 +131,7 @@ function Detector:parse_config(cfg)
         -- compile the filter
         local filter = pf.compile_filter(rule.filter)
         assert(filter)
-        rule_filters[rule_num] = filter
+        self.rule_filters[rule_num] = filter
 
         -- use default burst value of 2*rate
         if rule.pps_burst_rate == nil and rule.pps_rate then
