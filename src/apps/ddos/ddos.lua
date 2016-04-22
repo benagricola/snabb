@@ -266,6 +266,7 @@ end
 
 function Detector:bpf_match(p)
     local rules = self.rules
+    local rule_filters = self.rule_filters
     local rule_count = self.rule_count
 
     for i = 1, rule_count do
