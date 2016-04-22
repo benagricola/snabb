@@ -30,6 +30,9 @@ local math_floor    = math.floor
 local math_ceil     = math.ceil
 local math_abs      = math.abs
 local math_exp      = math.exp
+local json          = require("lib.json")
+local json_decode   = json.decode
+local json_encode   = json.encode
 local msgpack       = require("lib.msgpack")
 local m_pack        = msgpack.pack
 local m_unpack      = msgpack.unpack
@@ -106,7 +109,7 @@ function Detector:read_config()
         local cfg_file = assert(io.open(self.config_file_path, "r"))
         local cfg_raw  = cfg_file:read("*all")
         self.config_loaded = stat.mtime
-        local cfg_json = json.decode(cfg_raw)
+        local cfg_json = json_decode(cfg_raw)
         self:parse_config(cfg_json)
     end
 end
