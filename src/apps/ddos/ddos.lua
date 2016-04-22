@@ -59,6 +59,7 @@ function Detector:new (arg)
         config_loaded = 0, -- Last time config was loaded
         last_report   = nil,
         rules         = {},
+        rule_filters  = {},
         bucket_period = 5,
         ewma_period   = 30,
         core          = conf.core,
@@ -109,6 +110,7 @@ end
 function Detector:write_status()
     local status_file = assert(io.open(self.status_file_path, "w"))
     status_file:write(m_pack(self.rules))
+    status_file:close()
 end
 
 function Detector:read_config()
@@ -116,6 +118,7 @@ function Detector:read_config()
     if stat.mtime ~= self.config_loaded then
         local cfg_file = assert(io.open(self.config_file_path, "r"))
         local cfg_raw  = cfg_file:read("*all")
+        cfg_file:close()
         self.config_loaded = stat.mtime
         local cfg_json = json_decode(cfg_raw)
         self:parse_config(cfg_json)
@@ -128,7 +131,7 @@ function Detector:parse_config(cfg)
         -- compile the filter
         local filter = pf.compile_filter(rule.filter)
         assert(filter)
-        rule.cfilter = filter
+        rule_filters[rule_num] = filter
 
         -- use default burst value of 2*rate
         if rule.pps_burst_rate == nil and rule.pps_rate then
@@ -266,9 +269,9 @@ function Detector:bpf_match(p)
     local rule_count = self.rule_count
 
     for i = 1, rule_count do
-        local rule = rules[i]
-        if rule.cfilter(p.data, p.length) then
-            return rule
+        local rule = rule_filters[i]
+        if rule(p.data, p.length) then
+            return rules[i]
         end
     end
     return nil
