@@ -41,10 +41,10 @@ local mask = ffi.C.LINK_RING_SIZE-1
 
 require("core.link_h")
 
-local function info(msg,...)
+local function info(msg, ...)
     local now = tonumber(app_now())
     local fmt = '[%d] INFO: %s'
-    print(fmt:format(now), msg:format(...))
+    print(fmt:format(now, msg:format(...)))
 end
 
 Detector = {}
