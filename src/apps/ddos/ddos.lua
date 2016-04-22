@@ -9,6 +9,7 @@ local ethernet      = require("lib.protocol.ethernet")
 local ipv4          = require("lib.protocol.ipv4")
 local ipv6          = require("lib.protocol.ipv6")
 local counter       = require("core.counter")
+local shm           = require("core.shm")
 local ffi           = require("ffi")
 local link          = require("core.link")
 local link_receive  = link.receive
@@ -29,9 +30,9 @@ local math_floor    = math.floor
 local math_ceil     = math.ceil
 local math_abs      = math.abs
 local math_exp      = math.exp
-local json          = require("lib.json")
-local json_encode   = json.encode
-local json_decode   = json.decode
+local msgpack       = require("lib.msgpack")
+local m_pack        = msgpack.pack
+local m_unpack      = msgpack.unpack
 
 local C = ffi.C
 local mask = ffi.C.LINK_RING_SIZE-1
@@ -59,6 +60,8 @@ function Detector:new (arg)
 
     self:read_config()
 
+    -- Initialise shared memory file containing
+    self.shm_status = shm.create("detector/status", "const char[]")
 
     self.parsed_pps = 0
     self.parsed_bps = 0
@@ -146,8 +149,7 @@ function Detector:periodic()
     for rule_num, rule in pairs(self.rules) do
         self:violate_rule(rule)
     end
-    io.write(json_encode(self.rules))
-    io.flush()
+    self.shm_status = m_encode(self.rules)
 end
 
 function Detector:violate_rule(rule)
