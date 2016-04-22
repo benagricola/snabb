@@ -105,9 +105,9 @@ function run (args)
 
     end
 
-    engine.busywait = opt.busywait
+    engine.busywait = opt.busywait and true or false
     engine.configure(c)
-    engine.main({report = {showlinks=true}})
+    engine.main({report = {showlinks = true}})
 end
 
 function selftest()
