@@ -1,7 +1,7 @@
 module(..., package.seeall)
 
 local S             = require("syscall")
-
+local os            = require("os")
 local app           = require("core.app")
 local app_now       = app.now
 local datagram      = require("lib.protocol.datagram")
@@ -42,8 +42,8 @@ local mask = ffi.C.LINK_RING_SIZE-1
 require("core.link_h")
 
 local function info(msg, ...)
-    local now = tonumber(app_now())
-    local fmt = '[%d] INFO: %s'
+    local now = os.date("%T", tonumber(app_now()))
+    local fmt = '[%s] INFO: %s'
     print(fmt:format(now, msg:format(...)))
 end
 
