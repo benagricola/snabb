@@ -55,6 +55,7 @@ function Detector:new (arg)
 
     local o = {
         config_file_path = conf.config_file_path,
+        status_file_path = "/dev/shm/detector-status",
         config_loaded = 0, -- Last time config was loaded
         last_report   = nil,
         rules         = {},
@@ -110,6 +111,11 @@ function Detector:new (arg)
     return self
 end
 
+function Detector:write_status()
+    local status_file = assert(io.open(self.status_file_path, "w"))
+    status_file:write(m_pack(self.rules))
+end
+
 function Detector:read_config()
     local stat = S.stat(self.config_file_path)
     if stat.mtime ~= self.config_loaded then
@@ -159,7 +165,7 @@ function Detector:periodic()
     for rule_num, rule in pairs(self.rules) do
         self:violate_rule(rule)
     end
-    self.shm_status = m_encode(self.rules)
+    self:write_status()
 end
 
 function Detector:violate_rule(rule)
