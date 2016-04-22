@@ -269,6 +269,8 @@ function Detector:bpf_match(p)
     local rule_filters = self.rule_filters
     local rule_count = self.rule_count
 
+    local d = self.d:new(p, ethernet, {delayed_commit = true})
+    self:print_packet(d)
     for i = 1, rule_count do
         local rule = rule_filters[i]
         if rule(p.data, p.length) then
