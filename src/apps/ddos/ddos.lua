@@ -161,10 +161,10 @@ function Detector:parse_config(cfg)
 end
 
 function Detector:periodic()
+    self:write_status()
     for rule_num, rule in pairs(self.rules) do
         self:violate_rule(rule)
     end
-    self:write_status()
 end
 
 function Detector:violate_rule(rule)
