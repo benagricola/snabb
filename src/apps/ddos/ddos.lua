@@ -69,11 +69,6 @@ function Detector:new (arg)
     info("Reading initial config...")
     self:read_config()
 
-    info("Setting up shared memory...")
-
-    -- Initialise shared memory file containing
-    self.shm_status = shm.create("/detector/status", "const char[]")
-
     self.parsed_pps = 0
     self.parsed_bps = 0
 
