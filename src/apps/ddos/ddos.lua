@@ -126,7 +126,7 @@ function Detector:read_config()
 end
 
 function Detector:parse_config(cfg)
-    for rule_num, rule in pairs(cfg.rules) do
+    for rule_num, rule in ipairs(cfg.rules) do
         print("Compiling rule '" .. rule.filter .. "'")
         -- compile the filter
         local filter = pf.compile_filter(rule.filter)
@@ -148,6 +148,7 @@ function Detector:parse_config(cfg)
         rule.bps = 0
         rule.pps_bucket = 0
         rule.bps_bucket = 0
+        rule.matched_packets = 0
 
         rule.last_time  = 0
         rule.in_violation   = false
@@ -254,6 +255,7 @@ function Detector:process_packet(i)
         return
     end
 
+    rule.matched_packets = rule.matched_packets + 1
     -- Okay, packet matched - burst into this rule
     rule.pps_bucket = rule.pps_bucket + 1
     rule.bps_bucket = rule.bps_bucket + p.length
