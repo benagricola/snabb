@@ -9,6 +9,7 @@ local log_info      = log.info
 local log_warn      = log.warn
 local log_error     = log.error
 local log_critical  = log.critical
+local log_debug     = log.debug
 local datagram      = require("lib.protocol.datagram")
 local ethernet      = require("lib.protocol.ethernet")
 local ipv4          = require("lib.protocol.ipv4")
