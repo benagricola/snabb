@@ -48,7 +48,7 @@ require("core.link_h")
 Detector = {}
 
 -- I don't know what I'm doing
-function Detector:new (_, arg)
+function Detector:new (arg)
     local conf = arg and config.parse_app_arg(arg) or {}
 
     local classifier = require("apps.ddos.classifiers.pflua")
@@ -83,9 +83,7 @@ function Detector:write_status()
 end
 
 function Detector:read_config()
-    print(self.config_file_path)
     local stat = S.stat(self.config_file_path)
-    print(stat)
     if stat.mtime ~= self.config_loaded then
         log_info("Config file '%s' has been modified, reloading...", self.config_file_path)
         local cfg_file = assert(io.open(self.config_file_path, "r"))
