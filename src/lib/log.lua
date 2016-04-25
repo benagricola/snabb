@@ -1,4 +1,4 @@
-local app_now = app.now
+local app = require("core.app").now
 
 local _M = {
     _VERSION = "0.01",
