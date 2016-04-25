@@ -53,10 +53,12 @@ function Bucket:new(cfg)
 
     log_info("Initialised bucket '%s' with settings:", self.name)
     log_info([[
+
       Period: %d
       Average Calc Time: %d
-      PPS Rate: %d/%d (avg/burst)
-      BPS Rate: %d/%d (avg/burst)]],
+      PPS Threshold: %d/%d (avg/burst)
+      BPS Threshold: %d/%d (avg/burst)]],
+
       self.period,
       self.average_period,
       self.pps_rate,
