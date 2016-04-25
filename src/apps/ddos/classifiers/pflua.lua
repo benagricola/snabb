@@ -63,3 +63,5 @@ function PFLua:periodic()
         bucket:check_violation()
     end
 end
+
+return PFLua
