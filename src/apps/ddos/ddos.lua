@@ -106,22 +106,24 @@ function Detector:periodic()
     local now = app_now()
 
     -- Calculate bucket rates and violations
-    if now - self.last_periodic > 1 then
+    if (now - self.last_periodic) > 1 then
         log_debug("Detector Periodic")
         self.classifier:periodic()
         self:read_config()
         self.last_periodic = now
     end
 
-    if now - self.last_status > 1 then
+    if (now - self.last_status) > 1 then
         log_debug("Detector Write Status")
         -- Report to file
         self:write_status()
+        self.last_status = now
     end
 
-    if now - self.last_report > 30 then
+    if (now - self.last_report) > 30 then
         log_debug("Detector Report")
         self:report()
+        self.last_report = now
     end
 end
 
