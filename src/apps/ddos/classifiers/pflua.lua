@@ -25,7 +25,7 @@ end
 function PFLua:parse_rules(rules)
     -- For each input rule
     for rule_num, rule in ipairs(rules) do
-        log_info("Compiling rule %s with filter '%s'", rule.filter)
+        log_info("Compiling rule %s with filter '%s'", rule.name, rule.filter)
         -- Compile PF filter and assert validity
         local filter = pf.compile_filter(rule.filter)
         assert(filter)
