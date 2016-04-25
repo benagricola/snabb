@@ -83,7 +83,9 @@ function Detector:write_status()
 end
 
 function Detector:read_config()
+    print(self.config_file_path)
     local stat = S.stat(self.config_file_path)
+    print(stat)
     if stat.mtime ~= self.config_loaded then
         log_info("Config file '%s' has been modified, reloading...", self.config_file_path)
         local cfg_file = assert(io.open(self.config_file_path, "r"))
