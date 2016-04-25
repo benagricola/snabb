@@ -1,8 +1,6 @@
 local app_now = require("core.app").now
 
-local _M = {
-    _VERSION = "0.01",
-}
+local _M = {}
 
 local function log(msg, level, ...)
     local now = tonumber(app_now())

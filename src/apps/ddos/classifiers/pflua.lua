@@ -7,9 +7,7 @@ local log_critical  = log.critical
 local pf            = require("pf")
 local bucket        = require("apps.ddos.lib.bucket")
 
-local PFLua = {
-    _VERSION = "0.01",
-}
+local PFLua = {}
 
 function PFLua:new(_, rules)
     local self = {

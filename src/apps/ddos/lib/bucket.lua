@@ -10,9 +10,7 @@ local log_critical  = log.critical
 local math_exp      = require("math").exp
 local app_now       = require("core.app").now
 
-local Bucket = {
-    _VERSION = "0.01",
-}
+local Bucket = {}
 
 function Bucket:new(_, cfg)
     local self = {

@@ -49,7 +49,7 @@ require("core.link_h")
 Detector = {}
 
 -- I don't know what I'm doing
-function Detector:new (arg)
+function Detector:new (_, arg)
     local conf = arg and config.parse_app_arg(arg) or {}
 
     local o = {
