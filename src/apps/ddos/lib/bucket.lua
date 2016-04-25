@@ -52,7 +52,7 @@ function Bucket:new(cfg)
     self.exp_value = math_exp(-self.period/self.average_period)
 
     log_info("Initialised bucket '%s' with settings:", self.name)
-    log_info("Period: %d\nAverage Calc Time: %d\nPPS Rate: %d/%d (avg/burst)\nBPS Rate: %d/%d (avg/burst)", self.period, self.average_period, self.pps_rate, self.pps_burst_rate, self.bps_rate, self.bps_burst_rate)
+    log_info("Period: %d\nAverage Calc Time: %d\nPPS Rate: %d/%d (avg/burst)\nBPS Rate: %d/%d (avg/burst)", self.period, self.average_period, self.pps_rate, self.pps_burst_rate or 0, self.bps_rate, self.bps_burst_rate or 0)
 
     return setmetatable(self, {__index = Bucket})
 end
