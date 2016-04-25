@@ -130,6 +130,8 @@ function Detector:push()
     while not link_empty(i) do
         self:process_packet(i)
     end
+
+    self:periodic()
 end
 
 
