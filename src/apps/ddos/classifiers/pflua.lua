@@ -1,3 +1,5 @@
+module(..., package.seeall)
+
 local log           = require("lib.log")
 local log_info      = log.info
 local log_warn      = log.warn
@@ -64,4 +66,3 @@ function PFLua:periodic()
     end
 end
 
-return PFLua
