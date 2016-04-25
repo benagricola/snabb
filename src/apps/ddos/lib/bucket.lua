@@ -109,7 +109,7 @@ function Bucket:check_violation()
     if self.bps_rate then
         if bps > self.bps_burst_rate then
             violation = "bps_burst"
-        elseif avg_bps > self.bps_rate then
+        elseif self.avg_bps > self.bps_rate then
             violation = "bps"
         end
     end
