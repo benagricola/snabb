@@ -10,14 +10,11 @@ local log_critical  = log.critical
 local math_exp      = require("math").exp
 local app_now       = require("core.app").now
 
-local _M = {
+local Bucket = {
     _VERSION = "0.01",
 }
 
-local mt = { __index = _M }
-
-
-function _M.new(cfg)
+function Bucket:new(_, cfg)
     local self = {
         name = cfg.name,
         period         = cfg.period or 5,  -- Buckets are 5s long
@@ -57,17 +54,17 @@ function _M.new(cfg)
     log_info("Initialised bucket '%s' with settings:", self.name)
     log_info("Period: %d\nAverage Calc Time: %d\nPPS Rate: %d/%d (avg/burst)\nBPS Rate: %d/%d (avg/burst)", self.period, self.average_period, self.pps_rate, self.pps_burst_rate, self.bps_rate, self.bps_burst_rate)
 
-    return setmetatable(self, mt)
+    return setmetatable(self, {__index = Bucket})
 end
 
 
-function _M.add_packet(self,size)
+function Bucket:add_packet(size)
     self.cur_packets = self.cur_packets+1
     self.cur_bits    = self.cur_bits + size
 end
 
 
-function _M.calculate_rate(self)
+function Bucket:calculate_rate()
     local exp_value = self.exp_value
     local pps = self.pps
     local bps = self.bps
@@ -90,7 +87,7 @@ function _M.calculate_rate(self)
     self.last_calc   = now
 end
 
-function _M.check_violation(self)
+function Bucket:check_violation()
     local now = app_now()
     local violation = false
     local pps = self.pps
@@ -126,7 +123,7 @@ function _M.check_violation(self)
     end
 end
 
-function _M.periodic(self)
+function Bucket:periodic()
     local now = app_now()
 
     if now - self.last_calc > self.period then
@@ -136,7 +133,7 @@ function _M.periodic(self)
     end
 end
 
-function _M.debug(self)
+function Bucket:debug()
     local msg = [[ Bucket %s:
         Period: %d
         Average Period: %d
@@ -159,5 +156,3 @@ function _M.debug(self)
         self.violated, self.first_violated,uself.last_violated)
 
 end
-
-return _M

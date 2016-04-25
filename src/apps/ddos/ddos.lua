@@ -9,7 +9,7 @@ local log_info      = log.info
 local log_warn      = log.warn
 local log_error     = log.error
 local log_critical  = log.critical
-local class_pflua   = require("apps.ddos.classifiers.pflua")
+local class_pflua   = require("apps.ddos.classifiers.pflua").PFLua
 local datagram      = require("lib.protocol.datagram")
 local ethernet      = require("lib.protocol.ethernet")
 local ipv4          = require("lib.protocol.ipv4")
@@ -72,44 +72,16 @@ function Detector:new (arg)
     -- datagram object for reuse
     self.d = datagram:new()
 
-    -- schedule periodic task every second
-    timer.activate(timer.new(
-        "periodic",
-        function()
-            self:periodic()
-        end,
-        self.bucket_period * 1e9,
-        'repeating'
-    ))
-
-    timer.activate(timer.new(
-        "report",
-        function()
-            self:report()
-        end,
-        1e9,
-        'repeating'
-    ))
-
-    timer.activate(timer.new(
-        "periodic",
-        function()
-            self:read_config()
-        end,
-        30 * 1e9,
-        'repeating'
-    ))
-
     return self
 end
 
-function Detector:write_status(self)
+function Detector:write_status()
     local status_file = assert(io.open(self.status_file_path, "w"))
     status_file:write(m_pack(self.rules))
     status_file:close()
 end
 
-function Detector:read_config(self)
+function Detector:read_config()
     local stat = S.stat(self.config_file_path)
     if stat.mtime ~= self.config_loaded then
         log_info("Config file '%s' has been modified, reloading...", self.config_file_path)
@@ -122,18 +94,19 @@ function Detector:read_config(self)
     end
 end
 
-function Detector:parse_config(self, cfg)
+function Detector:parse_config(cfg)
     self.classifier:parse_rules(cfg.rules)
 end
 
 -- Periodic functions here have a resolution of a second or more.
 -- Subsecond periodic tasks are not possible
-function Detector:periodic(self)
+function Detector:periodic()
     local now = app_now()
 
     -- Calculate bucket rates and violations
     if now - self.last_periodic > 1 then
         self.classifier:periodic()
+        self:read_config()
         self.last_periodic = now
     end
 
@@ -141,9 +114,13 @@ function Detector:periodic(self)
         -- Report to file
         self:write_status()
     end
+
+    if now - self.last_report > 30 then
+        self:report()
+    end
 end
 
-function Detector:push ()
+function Detector:push()
     local i = assert(self.input.input, "input port not found")
 
     while not link_empty(i) do

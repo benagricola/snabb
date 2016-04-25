@@ -7,24 +7,21 @@ local log_critical  = log.critical
 local pf            = require("pf")
 local bucket        = require("apps.ddos.lib.bucket")
 
-local _M = {
+local PFLua = {
     _VERSION = "0.01",
-    _TYPE = "pflua",
 }
 
-local mt = { __index = _M }
-
-function _M.new(rules)
+function PFLua:new(_, rules)
     local self = {
         rules      = {},
         buckets    = {},
         rule_count = 0
     }
 
-    return setmetatable(self, mt)
+    return setmetatable(self, {__index = PFLua})
 end
 
-function _M.parse_rules(self, rules)
+function PFLua:parse_rules(rules)
     -- For each input rule
     for rule_num, rule in ipairs(rules) do
         log_info("Compiling rule %s with filter '%s'", rule.filter)
@@ -41,7 +38,7 @@ function _M.parse_rules(self, rules)
     self.rule_count = #self.rules
 end
 
-function _M.match(self, packet)
+function PFLua:match(packet)
     local rules = self.rules
     local buckets = self.buckets
     local rule_count = self.rule_count
@@ -59,7 +56,7 @@ function _M.match(self, packet)
     return nil
 end
 
-function _M.periodic(self)
+function PFLua:periodic()
     -- Calculate bucket timers
     for i = 1, self.rule_count do
         local bucket = buckets[i]
@@ -67,6 +64,3 @@ function _M.periodic(self)
         bucket:check_violation()
     end
 end
-
-return _M
-
