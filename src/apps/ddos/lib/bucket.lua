@@ -18,7 +18,7 @@ function Bucket:new(cfg)
     local self = {
         name = cfg.name,
         period         = cfg.period or 5,  -- Buckets are 5s long
-        average_period = cfg.period or 30, -- EWMA is calculated over 30s
+        average_period = cfg.avg_period or 30, -- EWMA is calculated over 30s
         pps_burst_rate = cfg.pps_burst_rate,
         bps_burst_rate = cfg.bps_burst_rate,
         pps_rate       = cfg.pps_rate,
@@ -52,7 +52,16 @@ function Bucket:new(cfg)
     self.exp_value = math_exp(-self.period/self.average_period)
 
     log_info("Initialised bucket '%s' with settings:", self.name)
-    log_info("Period: %d\nAverage Calc Time: %d\nPPS Rate: %d/%d (avg/burst)\nBPS Rate: %d/%d (avg/burst)", self.period, self.average_period, self.pps_rate, self.pps_burst_rate or 0, self.bps_rate, self.bps_burst_rate or 0)
+    log_info([[
+    Period: %d
+    Average Calc Time: %d
+    PPS Rate: %d/%d (avg/burst)
+    BPS Rate: %d/%d (avg/burst)]],
+    self.period, self.average_period,
+    self.pps_rate,
+    self.pps_burst_rate or 0,
+    self.bps_rate,
+    self.bps_burst_rate or 0)
 
     return setmetatable(self, {__index = Bucket})
 end
