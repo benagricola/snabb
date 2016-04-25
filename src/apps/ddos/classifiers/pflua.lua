@@ -66,3 +66,4 @@ function PFLua:periodic()
     end
 end
 
+return PFLua

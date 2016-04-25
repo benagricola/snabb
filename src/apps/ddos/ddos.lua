@@ -9,7 +9,6 @@ local log_info      = log.info
 local log_warn      = log.warn
 local log_error     = log.error
 local log_critical  = log.critical
-local class_pflua   = require("apps.ddos.classifiers.pflua")
 local datagram      = require("lib.protocol.datagram")
 local ethernet      = require("lib.protocol.ethernet")
 local ipv4          = require("lib.protocol.ipv4")
@@ -52,6 +51,8 @@ Detector = {}
 function Detector:new (_, arg)
     local conf = arg and config.parse_app_arg(arg) or {}
 
+    local classifier = require("apps.ddos.classifiers.pflua")
+
     local o = {
         config_file_path = conf.config_file_path,
         status_file_path = "/dev/shm/detector-status",
@@ -60,7 +61,7 @@ function Detector:new (_, arg)
         last_periodic = 0,
         last_status   = 0,
         core          = conf.core,
-        classifier    = class_pflua.new()
+        classifier    = classifier:new()
     }
 
     self = setmetatable(o, {__index = Detector})
