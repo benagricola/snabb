@@ -10,13 +10,14 @@ local bucket        = require("apps.ddos.lib.bucket")
 local PFLua = {}
 
 function PFLua:new(_, rules)
-    local self = {
+    local o = {
         rules      = {},
         buckets    = {},
         rule_count = 0
     }
 
-    return setmetatable(self, {__index = PFLua})
+    self = setmetatable(o, {__index = PFLua})
+    return self
 end
 
 function PFLua:parse_rules(rules)
