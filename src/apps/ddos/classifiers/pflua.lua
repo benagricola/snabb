@@ -59,7 +59,9 @@ end
 
 function PFLua:periodic()
     -- Calculate bucket timers
-    for i = 1, self.rule_count do
+    local buckets = self.buckets
+    local rule_count = self.rule_count
+    for i = 1, rule_count do
         local bucket = buckets[i]
         bucket:calculate_rate()
         bucket:check_violation()
