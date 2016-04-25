@@ -57,7 +57,7 @@ function parse_args(args)
     function handlers.b (arg) opt.busywait         = true end
 
 
-    args = lib.dogetopt(args, handlers, "hc:i:o:g:c:b", long_opts)
+    args = lib.dogetopt(args, handlers, "hc:i:o:g:c:n:b", long_opts)
 
     if not opt.int_in then fatal("Missing argument -i") end
     if not opt.int_out then print("Not forwarding captured traffic") end
