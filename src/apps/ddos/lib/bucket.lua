@@ -14,7 +14,7 @@ local app_now       = require("core.app").now
 
 local Bucket = {}
 
-function Bucket:new(_, cfg)
+function Bucket:new(cfg)
     local self = {
         name = cfg.name,
         period         = cfg.period or 5,  -- Buckets are 5s long
@@ -154,5 +154,6 @@ function Bucket:debug()
         self.bps_burst_rate, self.bps_rate, self.total_packets,
         self.total_bits, self.last_update, self.last_calc,
         self.violated, self.first_violated,uself.last_violated)
-
 end
+
+return Bucket

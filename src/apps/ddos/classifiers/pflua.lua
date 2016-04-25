@@ -11,7 +11,7 @@ local bucket        = require("apps.ddos.lib.bucket")
 
 local PFLua = {}
 
-function PFLua:new(_, rules)
+function PFLua:new(rules)
     local o = {
         rules      = {},
         buckets    = {},
@@ -34,7 +34,7 @@ function PFLua:parse_rules(rules)
         self.rules[rule_num] = filter
 
         -- Create new bucket with rule thresholds
-        self.buckets[rule_num] = bucket.new(rule)
+        self.buckets[rule_num] = bucket:new(rule)
     end
     self.rule_count = #self.rules
 end
