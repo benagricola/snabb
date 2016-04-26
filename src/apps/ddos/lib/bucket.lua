@@ -160,12 +160,13 @@ function Bucket:debug()
         First Violated: %d
         Last Violated: %d ]]
 
+    log.print_r(self)
     log_debug(msg, self.name, self.period, self.average_period,
         self.pps, self.avg_pps, self.pps_burst_rate,
         self.pps_rate, self.bps, self.avg_bps,
         self.bps_burst_rate, self.bps_rate, self.total_packets,
         self.total_bits, self.last_update, self.last_calc,
-        self.violated and "Yes" or "No", self.first_violated or 0, self.last_violated or 0)
+        self.violated or "none", self.first_violated or 0, self.last_violated or 0)
 end
 
 return Bucket
