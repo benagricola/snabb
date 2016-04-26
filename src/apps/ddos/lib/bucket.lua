@@ -141,8 +141,13 @@ function Bucket:periodic()
         self:calculate_rate(now)
         self:check_violation(now)
         self.last_calc = now
-        self:debug()
+        self:status()
     end
+end
+
+function Bucket:status()
+    local msg = "%s: %d/%d pps - %d/%d bps - Totals: %d packets / %d Mbits"
+    log_debug(msg, self.name, self.pps, self.pps_rate, self.bps, self.bps_rate, self.total_packets, (self.total_bits / 1024 / 1024))
 end
 
 function Bucket:debug()
@@ -150,9 +155,9 @@ function Bucket:debug()
         Period: %d
         Average Period: %d
         PPS: %d/%d (cur/avg)
-        PPS Threshold: %d/%dd (burst/avg)
+        PPS Threshold: %d/%d (burst/avg)
         BPS: %d/%d (cur/avg)
-        BPS Threshold: %d/%dd (burst/avg)
+        BPS Threshold: %d/%d (burst/avg)
         Totals: %d/%d (packets/bits)
         Last Update: %d
         Last Rate Calculation: %d
