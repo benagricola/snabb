@@ -16,10 +16,10 @@ function run (parameters)
    local c = config.new()
    config.app(c, "capture", pcap.PcapReader, input)
    config.app(c, "spray_app", sprayer.Sprayer)
-   config.app(c, "output_file", pcap.PcapWriter, output)
+   config.app(c, "output", raw.RawSocket, output)
 
    config.link(c, "capture.output -> spray_app.input")
-   config.link(c, "spray_app.output -> output_file.input")
+   config.link(c, "spray_app.output -> output.rx")
 
    engine.configure(c)
    engine.main({duration=1, report = {showlinks=true}})
