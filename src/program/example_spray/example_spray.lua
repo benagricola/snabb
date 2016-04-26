@@ -3,6 +3,7 @@
 module(..., package.seeall)
 
 local pcap = require("apps.pcap.pcap")
+local raw = require("apps.socket.raw")
 local sprayer = require("program.example_spray.sprayer")
 
 function run (parameters)
