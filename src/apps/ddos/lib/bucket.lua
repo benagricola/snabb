@@ -79,8 +79,6 @@ end
 
 function Bucket:calculate_rate(now)
     local exp_value = self.exp_value
-    local pps = self.pps
-    local bps = self.bps
 
     -- Calculate time since last calculation time rather than bucket period, this could take
     local last_period = now - self.last_calc
@@ -91,8 +89,12 @@ function Bucket:calculate_rate(now)
     self.bps = self.cur_bits / last_period
 
     -- Calculate EWMA rate (pps and bps)
-    self.avg_pps = pps + exp_value * (self.avg_pps - pps)
-    self.avg_bps = bps + exp_value * (self.avg_bps - bps)
+    self.avg_pps = self.pps + exp_value * (self.avg_pps - self.pps)
+    self.avg_bps = self.bps + exp_value * (self.avg_bps - self.bps)
+
+    -- Add to totals
+    self.total_packets = self.total_packets + self.cur_packets
+    self.total_bits    = self.total_bits + self.cur_bits
 
     -- Reset bucket
     self.cur_packets = 0
