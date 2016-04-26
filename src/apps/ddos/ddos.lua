@@ -48,11 +48,13 @@ require("core.link_h")
 
 Detector = {}
 
+
 -- I don't know what I'm doing
 function Detector:new (arg)
     local conf = arg and config.parse_app_arg(arg) or {}
 
     local classifier = require("apps.ddos.classifiers.pflua")
+    local buckets    = require("apps.ddos.lib.buckets")
 
     local o = {
         config_file_path = conf.config_file_path,
@@ -60,9 +62,9 @@ function Detector:new (arg)
         config_loaded = 0, -- Last time config was loaded
         last_report   = 0,
         last_periodic = 0,
-        last_status   = 0,
         core          = conf.core,
-        classifier    = classifier:new()
+        classifier    = classifier:new(),
+        buckets       = buckets:new(),
     }
 
     self = setmetatable(o, {__index = Detector})
@@ -77,11 +79,13 @@ function Detector:new (arg)
     return self
 end
 
+
 function Detector:write_status()
     local status_file = assert(io.open(self.status_file_path, "w"))
     status_file:write(m_pack(self.rules))
     status_file:close()
 end
+
 
 function Detector:read_config()
     local stat = S.stat(self.config_file_path)
@@ -96,48 +100,63 @@ function Detector:read_config()
     end
 end
 
+
 function Detector:parse_config(cfg)
-    self.classifier:parse_rules(cfg.rules)
+    -- Create rules based on config
+    self.classifier:create_rules(cfg.rules)
+
+    -- Create buckets based on config
+    self.buckets:create_buckets(cfg.rules)
 end
+
 
 -- Periodic functions here have a resolution of a second or more.
 -- Subsecond periodic tasks are not possible
 function Detector:periodic()
     local now = app_now()
 
-    -- Calculate bucket rates and violations
-    if (now - self.last_periodic) > 1 then
-        log_debug("Detector Periodic")
-        self.classifier:periodic()
-        self:read_config()
-        self.last_periodic = now
+    -- Return if we havent spent at least a second since the last periodic
+    if (now - self.last_periodic) < 1 then
+        return
     end
 
-    if (now - self.last_status) > 1 then
-        log_debug("Detector Write Status")
-        -- Report to file
-        self:write_status()
-        self.last_status = now
-    end
+    -- Run classifier and bucket periodic methods
+    self.classifier:periodic()
+    self.buckets:periodic()
 
+    -- Write status out to file
+    self:write_status()
+
+    -- Attempt to reload config if necessary, but do this after logging the last interval data
+    self:read_config()
+    self.last_periodic = now
+
+
+    -- Only report if >30s has passed
     if (now - self.last_report) > 30 then
-        log_debug("Detector Report")
         self:report()
         self.last_report = now
     end
 end
 
+
+-- This can be thought of as the application loop
 function Detector:push()
     local i = assert(self.input.input, "input port not found")
 
+    -- While link is not empty
     while not link_empty(i) do
+        -- Process packet
         self:process_packet(i)
     end
 
+    -- Run periodic method (TODO: may need moving inside while loop above
+    -- if link is too full and doesn't breathe often)
     self:periodic()
 end
 
-
+-- Processes a single received packet. Classify it by defined rules and place
+-- into a bucket.
 function Detector:process_packet(i)
     local p = link_receive(i)
     local classifier = self.classifier
@@ -146,15 +165,16 @@ function Detector:process_packet(i)
 
     -- Check packet against BPF rules
 
-    local bucket = classifier:match(p)
+    local bucket_id = classifier:match(p)
 
     -- If packet didn't match a rule (no bucket returned), ignore
-    if bucket == nil then
+    if bucket_id == nil then
         -- Free packet
         packet_free(p)
         return
     end
 
+    local bucket = buckets:get_bucket_by_id(bucket_id)
     bucket:add_packet(p.length)
 
     -- TODO: If rule is in violation, log packet?

@@ -7,14 +7,13 @@ local log_error     = log.error
 local log_critical  = log.critical
 
 local pf            = require("pf")
-local bucket        = require("apps.ddos.lib.bucket")
 
 local PFLua = {}
 
 function PFLua:new(rules)
     local o = {
         rules      = {},
-        buckets    = {},
+        rule_names = {},
         rule_count = 0
     }
 
@@ -22,26 +21,25 @@ function PFLua:new(rules)
     return self
 end
 
-function PFLua:parse_rules(rules)
+function PFLua:create_rule(rule)
+    log_info("Compiling rule %s with filter '%s'", rule.name, rule.filter)
+    local filter = pf.compile_filter(rule.filter)
+    assert(filter)
+    local rule_count = self.rule_count + 1
+    self.rules[rule_count] = filter
+    self.rule_count = rule_count
+    self.rule_names[rule.name] = rule_count
+end
+
+function PFLua:create_rules(rules)
     -- For each input rule
     for rule_num, rule in ipairs(rules) do
-        log_info("Compiling rule %s with filter '%s'", rule.name, rule.filter)
-        -- Compile PF filter and assert validity
-        local filter = pf.compile_filter(rule.filter)
-        assert(filter)
-
-        -- Assign to list of rules to be scanned
-        self.rules[rule_num] = filter
-
-        -- Create new bucket with rule thresholds
-        self.buckets[rule_num] = bucket:new(rule)
+        self:create_rule(rule)
     end
-    self.rule_count = #self.rules
 end
 
 function PFLua:match(packet)
     local rules = self.rules
-    local buckets = self.buckets
     local rule_count = self.rule_count
 
     -- For each rule
@@ -49,8 +47,8 @@ function PFLua:match(packet)
         local rule = rules[i]
         -- Check if rule matches against packet data and length
         if rule(packet.data, packet.length) then
-            -- Return relevant bucket if match
-            return buckets[i]
+            -- Return rule id if match
+            return i
         end
     end
     -- Otherwise return nothing
@@ -58,14 +56,8 @@ function PFLua:match(packet)
 end
 
 function PFLua:periodic()
-    -- Calculate bucket timers
-    local buckets = self.buckets
-    local rule_count = self.rule_count
-    for i = 1, rule_count do
-        local bucket = buckets[i]
-        bucket:calculate_rate()
-        bucket:check_violation()
-    end
+    -- No Op
 end
+
 
 return PFLua

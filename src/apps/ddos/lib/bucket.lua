@@ -76,13 +76,12 @@ function Bucket:add_packet(size)
 end
 
 
-function Bucket:calculate_rate()
+function Bucket:calculate_rate(now)
     local exp_value = self.exp_value
     local pps = self.pps
     local bps = self.bps
 
-    local now = tonumber(app_now())
-    -- Calculate time since last calculation time :)
+    -- Calculate time since last calculation time rather than bucket period, this could take
     local last_period = now - self.last_calc
 
     -- Calculate packets / bytes per second since the last calculation
@@ -99,8 +98,7 @@ function Bucket:calculate_rate()
     self.last_calc   = now
 end
 
-function Bucket:check_violation()
-    local now = app_now()
+function Bucket:check_violation(now)
     local violation = false
     local pps = self.pps
     local bps = self.bps
@@ -136,11 +134,11 @@ function Bucket:check_violation()
 end
 
 function Bucket:periodic()
-    local now = app_now()
-
-    if now - self.last_calc > self.period then
-        self:calculate_rate()
-        self:check_violation()
+    local now = tonumber(app_now())
+    -- Only calculate elapsed > self.period
+    if (now - self.last_calc) > self.period then
+        self:calculate_rate(now)
+        self:check_violation(now)
         self.last_calc = now
     end
 end
