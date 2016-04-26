@@ -150,17 +150,16 @@ function Bucket:debug()
         Period: %d
         Average Period: %d
         PPS: %d/%d (cur/avg)
-        PPS Threshold: %d/d (burst/avg)
+        PPS Threshold: %d/%dd (burst/avg)
         BPS: %d/%d (cur/avg)
-        BPS Threshold: %d/d (burst/avg)
+        BPS Threshold: %d/%dd (burst/avg)
         Totals: %d/%d (packets/bits)
         Last Update: %d
         Last Rate Calculation: %d
         Violated: %s
-        First Violated: %s
-        Last Violated: %s ]]
+        First Violated: %d
+        Last Violated: %d ]]
 
-    log.print_r(self)
     log_debug(msg, self.name, self.period, self.average_period,
         self.pps, self.avg_pps, self.pps_burst_rate,
         self.pps_rate, self.bps, self.avg_bps,
