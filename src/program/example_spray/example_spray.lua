@@ -23,5 +23,5 @@ function run (parameters)
    config.link(c, "spray_app.output -> output.rx")
 
    engine.configure(c)
-   engine.main({duration=1, report = {showlinks=true}})
+   engine.main({duration=30, report = {showlinks=true}})
 end
