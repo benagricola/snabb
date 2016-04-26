@@ -85,6 +85,7 @@ function Bucket:calculate_rate(now)
 
     log_debug("Last period is %d", last_period)
     -- Calculate packets / bytes per second since the last calculation
+    log_info("Cur Packets: %d Period: %d", self.cur_packets, last_period)
     self.pps = self.cur_packets / last_period
     self.bps = self.cur_bits / last_period
 
