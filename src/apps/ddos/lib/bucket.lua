@@ -10,7 +10,9 @@ local log_warn      = log.warn
 local log_error     = log.error
 local log_critical  = log.critical
 local log_debug     = log.debug
-local math_exp      = require("math").exp
+local math          = require("math")
+local math_exp      = math.exp
+local math_ceil     = math.ceil
 local app_now       = require("core.app").now
 
 local Bucket = {}
@@ -83,11 +85,9 @@ function Bucket:calculate_rate(now)
     -- Calculate time since last calculation time rather than bucket period, this could take
     local last_period = now - self.last_calc
 
-    log_debug("Last period is %d", last_period)
     -- Calculate packets / bytes per second since the last calculation
-    log_info("Cur Packets: %d Period: %d", self.cur_packets, last_period)
-    self.pps = self.cur_packets / last_period
-    self.bps = self.cur_bits / last_period
+    self.pps = math_ceil(self.cur_packets / last_period)
+    self.bps = math_ceil(self.cur_bits / last_period)
 
     -- Calculate EWMA rate (pps and bps)
     self.avg_pps = self.pps + exp_value * (self.avg_pps - self.pps)

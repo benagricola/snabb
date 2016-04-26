@@ -82,7 +82,7 @@ end
 
 function Detector:write_status()
     local status_file = assert(io.open(self.status_file_path, "w"))
-    status_file:write(m_pack(self.rules))
+    status_file:write(m_pack(self.buckets:get_buckets()))
     status_file:close()
 end
 

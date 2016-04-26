@@ -63,4 +63,8 @@ function Buckets:get_bucket_by_name(bucket_name)
     return self.buckets[bucket_id]
 end
 
+function Buckets:get_buckets()
+    return self.buckets
+end
+
 return Buckets
