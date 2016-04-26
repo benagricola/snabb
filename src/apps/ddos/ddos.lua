@@ -158,9 +158,12 @@ end
 -- Processes a single received packet. Classify it by defined rules and place
 -- into a bucket.
 function Detector:process_packet(i)
-    local p = link_receive(i)
     local classifier = self.classifier
+    local buckets    = self.buckets
+
     -- Parse packet
+    local p          = link_receive(i)
+
     -- local d = self.d:new(p, ethernet, {delayed_commit = true})
 
     -- Check packet against BPF rules
