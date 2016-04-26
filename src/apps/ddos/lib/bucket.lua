@@ -151,7 +151,7 @@ end
 
 function Bucket:status()
     local msg = "%s: %d/%d pps - %d/%d bps - Totals: %d packets / %d Mbits"
-    log_debug(msg, self.name, self.pps, self.pps_rate or self.pps_burst_rate, self.bps, self.bps_rate or self.bps_burst_rate, self.total_packets, (self.total_bits / 1024 / 1024))
+    log_debug(msg, self.name, self.pps, self.pps_rate or self.pps_burst_rate or 0, self.bps, self.bps_rate or self.bps_burst_rate or 0, self.total_packets, (self.total_bits / 1024 / 1024))
 end
 
 function Bucket:debug()
