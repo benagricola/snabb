@@ -9,6 +9,7 @@ local log_info      = log.info
 local log_warn      = log.warn
 local log_error     = log.error
 local log_critical  = log.critical
+local log_debug     = log.debug
 local math_exp      = require("math").exp
 local app_now       = require("core.app").now
 
