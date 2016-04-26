@@ -178,7 +178,6 @@ function Detector:process_packet(i)
     end
 
     local bucket = buckets:get_bucket_by_id(bucket_id)
-    log_debug("Matched packet to bucket name %s", bucket.name)
     bucket:add_packet(p.length)
 
     -- TODO: If rule is in violation, log packet?

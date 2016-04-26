@@ -72,7 +72,7 @@ end
 
 
 function Bucket:add_packet(size)
-    self.cur_packets = self.cur_packets+1
+    self.cur_packets = self.cur_packets + 1
     self.cur_bits    = self.cur_bits + size
 end
 
@@ -85,6 +85,7 @@ function Bucket:calculate_rate(now)
     -- Calculate time since last calculation time rather than bucket period, this could take
     local last_period = now - self.last_calc
 
+    log_debug("Last period is %d", last_period)
     -- Calculate packets / bytes per second since the last calculation
     self.pps = self.cur_packets / last_period
     self.bps = self.cur_bits / last_period
