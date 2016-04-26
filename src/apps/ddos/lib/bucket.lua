@@ -157,8 +157,8 @@ function Bucket:debug()
         Last Update: %d
         Last Rate Calculation: %d
         Violated: %s
-        First Violated: %d
-        Last Violated: %d ]]
+        First Violated: %s
+        Last Violated: %s ]]
 
     log.print_r(self)
     log_debug(msg, self.name, self.period, self.average_period,
