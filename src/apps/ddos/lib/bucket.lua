@@ -160,7 +160,7 @@ function Bucket:debug()
         First Violated: %d
         Last Violated: %d ]]
 
-    log_debug(msg, self.period, self.average_period,
+    log_debug(msg, self.name, self.period, self.average_period,
         self.pps, self.avg_pps, self.pps_burst_rate,
         self.pps_rate, self.bps, self.avg_bps,
         self.bps_burst_rate, self.bps_rate, self.total_packets,
