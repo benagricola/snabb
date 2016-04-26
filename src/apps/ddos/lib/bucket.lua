@@ -165,7 +165,7 @@ function Bucket:debug()
         self.pps_rate, self.bps, self.avg_bps,
         self.bps_burst_rate, self.bps_rate, self.total_packets,
         self.total_bits, self.last_update, self.last_calc,
-        self.violated, self.first_violated,uself.last_violated)
+        self.violated, self.first_violated, self.last_violated)
 end
 
 return Bucket
