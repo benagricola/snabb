@@ -34,7 +34,7 @@ end
 
 function Buckets:periodic()
     local bucket_count = self.bucket_count
-    local buckets = self.bucket
+    local buckets = self.buckets
     -- For each bucket
     for i = 1, bucket_count do
         buckets[i]:periodic()
