@@ -140,6 +140,7 @@ function Bucket:periodic()
         self:calculate_rate(now)
         self:check_violation(now)
         self.last_calc = now
+        self:debug()
     end
 end
 
