@@ -20,7 +20,7 @@ local Bucket = {}
 function Bucket:new(cfg)
     local self = {
         name = cfg.name,
-        period         = cfg.period or 5,  -- Buckets are 5s long
+        period         = cfg.period or 1,  -- Buckets are 5s long
         average_period = cfg.avg_period or 30, -- EWMA is calculated over 30s
         pps_burst_rate = cfg.pps_burst_rate,
         bps_burst_rate = cfg.bps_burst_rate,
@@ -126,11 +126,11 @@ function Bucket:check_violation(now)
     end
 
 
-    if not self.violated then
-        self.first_violated = now
-    end
-
     if violation then
+        if not self.violated then
+            self.first_violated = now
+        end
+
         self.violated = violation
         self.last_violated = now
     elseif self.violated then
