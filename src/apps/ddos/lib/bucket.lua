@@ -10,6 +10,7 @@ local log_warn      = log.warn
 local log_error     = log.error
 local log_critical  = log.critical
 local log_debug     = log.debug
+local counter       = require("core.counter")
 local math          = require("math")
 local math_exp      = math.exp
 local math_ceil     = math.ceil
@@ -26,8 +27,8 @@ function Bucket:new(cfg)
         bps_burst_rate = cfg.bps_burst_rate,
         pps_rate       = cfg.pps_rate,
         bps_rate       = cfg.bps_rate,
-        pps            = 0,
-        bps            = 0,
+        pps            = nil,
+        bps            = nil,
         avg_pps        = 0,
         avg_bps        = 0,
         cur_packets    = 0,
@@ -68,6 +69,9 @@ function Bucket:new(cfg)
       self.pps_burst_rate or 0,
       self.bps_rate or 0,
       self.bps_burst_rate or 0)
+
+    self.pps = counter.open("ddos/%s/pps":format(self.name))
+    self.bps = counter.open("ddos/%s/bps":format(self.name))
 
     return setmetatable(self, {__index = Bucket})
 end
