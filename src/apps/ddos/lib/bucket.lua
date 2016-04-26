@@ -70,8 +70,9 @@ function Bucket:new(cfg)
       self.bps_rate or 0,
       self.bps_burst_rate or 0)
 
-    self.pps = counter.open("ddos/%s/pps":format(self.name))
-    self.bps = counter.open("ddos/%s/bps":format(self.name))
+    local counter_name = "ddos/%s/%s"
+    self.pps = counter.open(counter_name:format(self.name, 'pps'))
+    self.bps = counter.open(counter_name:format(self.name, 'bps'))
 
     return setmetatable(self, {__index = Bucket})
 end
