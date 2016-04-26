@@ -24,8 +24,8 @@ function Bucket:new(cfg)
         average_period = cfg.avg_period or 30, -- EWMA is calculated over 30s
         pps_burst_rate = cfg.pps_burst_rate,
         bps_burst_rate = cfg.bps_burst_rate,
-        pps_rate       = cfg.pps_rate or 0,
-        bps_rate       = cfg.bps_rate or 0,
+        pps_rate       = cfg.pps_rate,
+        bps_rate       = cfg.bps_rate,
         pps            = 0,
         bps            = 0,
         avg_pps        = 0,
@@ -64,10 +64,10 @@ function Bucket:new(cfg)
 
       self.period,
       self.average_period,
-      self.pps_rate,
-      self.pps_burst_rate,
-      self.bps_rate,
-      self.bps_burst_rate)
+      self.pps_rate or 0,
+      self.pps_burst_rate or 0,
+      self.bps_rate or 0,
+      self.bps_burst_rate or 0)
 
     return setmetatable(self, {__index = Bucket})
 end
@@ -151,7 +151,7 @@ end
 
 function Bucket:status()
     local msg = "%s: %d/%d pps - %d/%d bps - Totals: %d packets / %d Mbits"
-    log_debug(msg, self.name, self.pps, self.pps_rate, self.bps, self.bps_rate, self.total_packets, (self.total_bits / 1024 / 1024))
+    log_debug(msg, self.name, self.pps, self.pps_rate or self.pps_burst_rate, self.bps, self.bps_rate or self.bps_burst_rate, self.total_packets, (self.total_bits / 1024 / 1024))
 end
 
 function Bucket:debug()
