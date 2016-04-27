@@ -309,9 +309,9 @@ function selftest ()
 
     app.main({ duration = 1 })
 
+    local ddos_app = app.app_table.detector
     local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
     local all_bucket = ddos_app.buckets:get_bucket_by_name('all')
-    local ddos_app = app.app_table.detector
 
 
     if ntp_bucket.violated ~= 'pps_burst_rate' then
