@@ -300,4 +300,8 @@ function selftest ()
 
     app.breathe()
     -- Check contents of shared memory file
+    local ddos_app = app.app_table.ddos
+
+    log.print_r(ddos_app.buckets)
+    return true
 end
