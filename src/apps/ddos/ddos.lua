@@ -305,7 +305,7 @@ function selftest ()
     config.link(c, "detector.output -> sink.input")
     app.configure(c)
 
-    app.breathe()
+    app.main({ duration = 2 })
     -- Check contents of shared memory file
     local ddos_app = app.app_table.detector
 
