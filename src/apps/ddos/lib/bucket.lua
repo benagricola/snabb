@@ -35,8 +35,8 @@ function Bucket:new(cfg)
         cur_bits       = 0,
         total_packets  = 0,
         total_bits     = 0,
-        last_update    = 0,
-        last_calc      = 0,
+        last_update    = app_now(), -- Set so first calculation works
+        last_calc      = app_now(), -- Set so first calculation works
         violated       = false,
         first_violated = 0,
         last_violated  = 0
