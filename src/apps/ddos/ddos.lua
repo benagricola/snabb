@@ -288,8 +288,8 @@ function selftest ()
             pps_burst_rate = 300,
         },
         {
-            name   = 'all_udp',
-            filter = 'udp',
+            name   = 'all',
+            filter = '',
             pps_rate       = 1000,
             pps_burst_rate = 3000,
         }
@@ -307,9 +307,26 @@ function selftest ()
     config.link(c, "detector.output -> sink.input")
     app.configure(c)
 
-    app.main({ duration = 4 })
-    -- Check contents of shared memory file
+    app.main({ duration = 1 })
+
+    local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
+    local all_bucket = ddos_app.buckets:get_bucket_by_name('all')
     local ddos_app = app.app_table.detector
 
-    return true
+
+    if ntp_bucket.violated ~= 'pps_burst_rate' then
+        log_error("Bucket violation type incorrect or not violated")
+        return false
+    end
+
+    if ntp_bucket.pps < ntp_bucket.pps_burst_rate then
+        log_error("Bucket pps less than burst rate")
+        return false
+    end
+
+    if all_bucket.pps > 0 or all_bucket.bps > 0 or all_bucket.violated then
+        log_error("Catchall bucket not zero, packets matched wrong rule!")
+    end
+
+    return ok
 end

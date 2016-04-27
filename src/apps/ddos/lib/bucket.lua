@@ -90,9 +90,6 @@ function Bucket:calculate_rate(now)
     -- Calculate time since last calculation time rather than bucket period, this could take
     local last_period = now - self.last_calc
 
-    -- Calculate packets / bytes per second since the last calculation
-    log_debug("%d / %d", self.cur_packets, last_period)
-
     local pps = math_ceil(self.cur_packets / last_period)
     local bps = math_ceil(self.cur_bits / last_period)
 
