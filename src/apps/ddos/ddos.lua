@@ -41,9 +41,12 @@ local msgpack       = require("lib.msgpack")
 local m_pack        = msgpack.pack
 local m_unpack      = msgpack.unpack
 
-msgpack.packers['cdata'] = function (buffer, fct)
-        local num = tonumber(fct.c)
-        mp.packers['unsigned'](buffer, num)
+msgpack.packers['cdata'] = function (buffer, data)
+    -- If cdata is a counter, conver to number and encode unsigned
+    if ffi.istype("struct counter", data) then
+        local num = tonumber(data.c)
+        msgpack.packers['unsigned'](buffer, num)
+    end
 end
 
 local C = ffi.C
