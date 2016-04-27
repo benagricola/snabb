@@ -41,7 +41,10 @@ local msgpack       = require("lib.msgpack")
 local m_pack        = msgpack.pack
 local m_unpack      = msgpack.unpack
 
-msgpack.packers['cdata'] = msgpack.packers['unsigned']
+msgpack.packers['cdata'] = function (buffer, fct)
+        local num = tonumber(fct.c)
+        mp.packers['unsigned'](buffer, num)
+end
 
 local C = ffi.C
 local mask = ffi.C.LINK_RING_SIZE-1
