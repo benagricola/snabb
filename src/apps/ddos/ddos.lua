@@ -314,19 +314,10 @@ function selftest ()
     local all_bucket = ddos_app.buckets:get_bucket_by_name('all')
 
 
-    if ntp_bucket.violated ~= 'pps_burst_rate' then
-        log_error("Bucket violation type incorrect or not violated")
-        return false
-    end
+    -- Check correct violation type and rates
+    assert(ntp_bucket.violated == 'pps_burst_rate', "Bucket violation type incorrect or not violated")
+    assert(ntp_bucket.pps >= ntp_bucket.pps_burst_rate, "Bucket pps less than burst rate")
+    assert(all_bucket.pps == 0 and all_bucket.bps == 0 and not all_bucket.violated, "Catchall bucket not zero, packets matched wrong rule!")
 
-    if ntp_bucket.pps < ntp_bucket.pps_burst_rate then
-        log_error("Bucket pps less than burst rate")
-        return false
-    end
-
-    if all_bucket.pps > 0 or all_bucket.bps > 0 or all_bucket.violated then
-        log_error("Catchall bucket not zero, packets matched wrong rule!")
-    end
-
-    return ok
+    return true
 end
