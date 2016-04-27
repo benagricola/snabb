@@ -70,8 +70,10 @@ function Detector:new (arg)
     self = setmetatable(o, {__index = Detector})
 
     log_info("Reading initial config...")
-
-    self:read_config()
+    if not self:read_config() then
+        log_warn("Could not read config, loading from args..")
+        self:parse_config(conf)
+    end
 
     -- datagram object for reuse
     self.d = datagram:new()
@@ -89,7 +91,8 @@ end
 
 function Detector:read_config()
     if not self.config_file_path then
-        return
+        self:parse_config(self.cfg)
+        return false
     end
 
     local stat = S.stat(self.config_file_path)
@@ -102,9 +105,11 @@ function Detector:read_config()
             self.config_loaded = stat.mtime
             local cfg_json = json_decode(cfg_raw)
             self:parse_config(cfg_json)
+            return true
         end
     else
         log_warning("Config file '%s' does not exist, continuing with already-loaded rules...")
+        return false
     end
 end
 
