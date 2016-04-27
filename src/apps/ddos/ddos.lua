@@ -307,7 +307,7 @@ function selftest ()
     config.link(c, "detector.output -> sink.input")
     app.configure(c)
 
-    app.main({ duration = 1 })
+    app.main({ duration = 2 })
 
     local ddos_app = app.app_table.detector
     local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
@@ -315,7 +315,6 @@ function selftest ()
 
 
     -- Check correct violation type and rates
-    print(ntp_bucket.violated)
     assert(ntp_bucket.violated == 'pps_burst_rate', "Bucket violation type incorrect or not violated")
     assert(ntp_bucket.pps >= ntp_bucket.pps_burst_rate, "Bucket pps less than burst rate")
     assert(all_bucket.pps == 0 and all_bucket.bps == 0 and not all_bucket.violated, "Catchall bucket not zero, packets matched wrong rule!")
