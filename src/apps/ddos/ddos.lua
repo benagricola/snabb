@@ -72,6 +72,7 @@ function Detector:new (arg)
     log_info("Reading initial config...")
     if not self:read_config() then
         log_warn("Could not read config, loading from args..")
+        log.print_r(conf)
         self:parse_config(conf)
     end
 
@@ -108,7 +109,7 @@ function Detector:read_config()
             return true
         end
     else
-        log_warning("Config file '%s' does not exist, continuing with already-loaded rules...")
+        log_warn("Config file '%s' does not exist, continuing with already-loaded rules...")
         return false
     end
 end
