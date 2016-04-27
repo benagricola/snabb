@@ -88,15 +88,23 @@ end
 
 
 function Detector:read_config()
+    if not self.config_file_path then
+        return
+    end
+
     local stat = S.stat(self.config_file_path)
-    if stat.mtime ~= self.config_loaded then
-        log_info("Config file '%s' has been modified, reloading...", self.config_file_path)
-        local cfg_file = assert(io.open(self.config_file_path, "r"))
-        local cfg_raw  = cfg_file:read("*all")
-        cfg_file:close()
-        self.config_loaded = stat.mtime
-        local cfg_json = json_decode(cfg_raw)
-        self:parse_config(cfg_json)
+    if stat and stat.isreg then
+        if stat.mtime ~= self.config_loaded then
+            log_info("Config file '%s' has been modified, reloading...", self.config_file_path)
+            local cfg_file = assert(io.open(self.config_file_path, "r"))
+            local cfg_raw  = cfg_file:read("*all")
+            cfg_file:close()
+            self.config_loaded = stat.mtime
+            local cfg_json = json_decode(cfg_raw)
+            self:parse_config(cfg_json)
+        end
+    else
+        log_warning("Config file '%s' does not exist, continuing with already-loaded rules...")
     end
 end
 
@@ -252,4 +260,39 @@ function Detector:report()
     self.last_stats = cur
 end
 
+function selftest ()
+    print("DDoS selftest")
 
+    local pcap = require("apps.pcap.pcap")
+    local basic_apps = require("apps.basic.basic_apps")
+
+    -- Generate random data to DDoS app
+
+    local rules = {
+        {
+            name           = 'ntp',
+            filter         = 'udp and src port 123',
+            pps_rate       = 100,
+            pps_burst_rate = 300,
+        },
+        {
+            name   = 'all_udp',
+            filter = 'udp',
+            pps_rate       = 1000,
+            pps_burst_rate = 3000,
+        }
+    }
+
+    local c = config.new()
+
+    config.app(c, "source", pcap.PcapReader, "apps/ddos/selftest.cap.in")
+    config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
+    config.app(c, "sink", pcap.PcapWriter, "apps/ddos/selftest.cap.out")
+
+    config.link(c, "source.output -> detector.input")
+    config.link(c, "detector.output -> sink.input")
+    app.configure(c)
+
+    app.breathe()
+    -- Check contents of shared memory file
+end
