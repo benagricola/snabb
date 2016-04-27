@@ -116,8 +116,8 @@ end
 
 function Bucket:check_violation(now)
     local violation = false
-    local pps = self.pps
-    local bps = self.bps
+    local pps = counter.read(self.pps)
+    local bps = counter.read(self.bps)
 
     -- If self is violated either in burst or moving average, set the violation type
     if self.bps_rate then
