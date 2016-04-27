@@ -72,7 +72,6 @@ function Detector:new (arg)
     log_info("Reading initial config...")
     if not self:read_config() then
         log_warn("Could not read config, loading from args..")
-        log.print_r(conf)
         self:parse_config(conf)
     end
 
@@ -300,7 +299,7 @@ function selftest ()
 
     app.breathe()
     -- Check contents of shared memory file
-    local ddos_app = app.app_table.ddos
+    local ddos_app = app.app_table.detector
 
     log.print_r(ddos_app.buckets)
     return true
