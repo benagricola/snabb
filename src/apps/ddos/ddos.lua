@@ -92,7 +92,6 @@ end
 
 function Detector:read_config()
     if not self.config_file_path then
-        self:parse_config(self.cfg)
         return false
     end
 
