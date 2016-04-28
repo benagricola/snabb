@@ -8,6 +8,7 @@ local log_warn      = log.warn
 local log_error     = log.error
 local log_critical  = log.critical
 local bucket        = require("apps.ddos.lib.bucket")
+local app_now       = require("core.app").now
 
 local Buckets = {}
 
@@ -35,10 +36,12 @@ end
 function Buckets:periodic()
     local bucket_count = self.bucket_count
     local buckets = self.buckets
+    local start = app_now()
     -- For each bucket
     for i = 1, bucket_count do
         buckets[i]:periodic()
     end
+    log_info("Periodic took %ds", app_now() - start)
 end
 
 -- Class method to create buckets
