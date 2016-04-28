@@ -25,6 +25,14 @@ local Bucket = {
     }
 }
 
+
+local function open_counter(bucket, metric)
+    local counter_name = "ddos/%s/%s"
+    cnt = counter.open(counter_name:format(bucket, metric))
+    return cnt
+end
+
+
 function Bucket:new(cfg)
     local self = {
         name = cfg.name,
@@ -34,14 +42,16 @@ function Bucket:new(cfg)
         bps_burst_rate = cfg.bps_burst_rate,
         pps_rate       = cfg.pps_rate,
         bps_rate       = cfg.bps_rate,
-        pps            = nil,
-        bps            = nil,
-        avg_pps        = 0,
-        avg_bps        = 0,
+        counters       = {
+            pps           = open_counter(cfg.name, 'pps'),
+            bps           = open_counter(cfg.name, 'bps'),
+            avg_pps       = open_counter(cfg.name, 'avg_pps'),
+            avg_bps       = open_counter(cfg.name, 'avg_bps'),
+            total_packets = open_counter(cfg.name, 'total_packets'),
+            total_bits    = open_counter(cfg.name, 'total_bits'),
+        },
         cur_packets    = 0,
         cur_bits       = 0,
-        total_packets  = 0,
-        total_bits     = 0,
         last_update    = app_now(), -- Set so first calculation works
         last_calc      = app_now(), -- Set so first calculation works
         violated       = false,
@@ -77,10 +87,6 @@ function Bucket:new(cfg)
       self.bps_rate or 0,
       self.bps_burst_rate or 0)
 
-    local counter_name = "ddos/%s/%s"
-    self.pps = counter.open(counter_name:format(self.name, 'pps'))
-    self.bps = counter.open(counter_name:format(self.name, 'bps'))
-
     return setmetatable(self, {__index = Bucket})
 end
 
@@ -100,16 +106,18 @@ function Bucket:calculate_rate(now)
     local pps = math_ceil(self.cur_packets / last_period)
     local bps = math_ceil(self.cur_bits / last_period)
 
-    counter.set(self.pps, pps)
-    counter.set(self.bps, bps)
+    local avg_pps = pps + exp_value * (self:get_counter('avg_pps') - pps)
+    local avg_bps = bps + exp_value * (self:get_counter('avg_bps') - bps)
 
-    -- Calculate EWMA rate (pps and bps)
-    self.avg_pps = pps + exp_value * (self.avg_pps - pps)
-    self.avg_bps = bps + exp_value * (self.avg_bps - bps)
+    self:set_counter('pps', pps)
+    self:set_counter('bps', bps)
+
+    self:set_counter('avg_pps', avg_pps)
+    self:set_counter('avg_bps', avg_bps)
 
     -- Add to totals
-    self.total_packets = self.total_packets + self.cur_packets
-    self.total_bits    = self.total_bits + self.cur_bits
+    self:add_counter('total_packets', self.cur_packets)
+    self:add_counter('total_bits', self.cur_bits)
 
     -- Reset bucket
     self.cur_packets = 0
@@ -117,16 +125,48 @@ function Bucket:calculate_rate(now)
     self.last_calc   = now
 end
 
+function Bucket:set_counter(name, value)
+    local cnt = self.counters[name]
+    if not cnt then
+        return nil
+    end
+
+    counter.set(cnt, value)
+    return true
+end
+
+function Bucket:add_counter(name, value)
+    local cnt = self.counters[name]
+    if not cnt then
+        return nil
+    end
+
+    counter.add(cnt, value)
+    return true
+end
+
+function Bucket:get_counter(name)
+    local cnt = self.counters[name]
+    if not cnt then
+        return nil
+    end
+
+    return tonumber(counter.read(cnt))
+end
+
+
 function Bucket:check_violation(now)
     local violation = false
-    local pps = counter.read(self.pps)
-    local bps = counter.read(self.bps)
+    local pps = self:get_counter('pps')
+    local bps = self:get_counter('bps')
+    local avg_pps = self:get_counter('avg_pps')
+    local avg_bps = self:get_counter('avg_bps')
 
     -- If self is violated either in burst or moving average, set the violation type
     if self.bps_rate then
         if bps > self.bps_burst_rate then
             violation = Bucket.violations.BPS_BURST
-        elseif self.avg_bps > self.bps_rate then
+        elseif avg_bps > self.bps_rate then
             violation = Bucket.violations.BPS
         end
     end
@@ -134,7 +174,7 @@ function Bucket:check_violation(now)
     if self.pps_rate then
         if pps > self.pps_burst_rate then
             violation = Bucket.violations.PPS_BURST
-        elseif self.avg_pps > self.pps_rate then
+        elseif avg_pps > self.pps_rate then
             violation = Bucket.violations.PPS
         end
     end
@@ -165,30 +205,7 @@ end
 
 function Bucket:status()
     local msg = "%s: %d/%d pps - %d/%d bps - Totals: %d packets / %d Mbits"
-    log_debug(msg, self.name, tonumber(counter.read(self.pps)), self.pps_rate or self.pps_burst_rate or 0, tonumber(counter.read(self.bps)), self.bps_rate or self.bps_burst_rate or 0, self.total_packets, (self.total_bits / 1024 / 1024))
-end
-
-function Bucket:debug()
-    local msg = [[ Bucket %s:
-        Period: %d
-        Average Period: %d
-        PPS: %d/%d (cur/avg)
-        PPS Threshold: %d/%d (burst/avg)
-        BPS: %d/%d (cur/avg)
-        BPS Threshold: %d/%d (burst/avg)
-        Totals: %d/%d (packets/bits)
-        Last Update: %d
-        Last Rate Calculation: %d
-        Violated: %s
-        First Violated: %d
-        Last Violated: %d ]]
-
-    log_debug(msg, self.name, self.period, self.average_period,
-        self.pps, self.avg_pps, self.pps_burst_rate,
-        self.pps_rate, self.bps, self.avg_bps,
-        self.bps_burst_rate, self.bps_rate, self.total_packets,
-        self.total_bits, self.last_update, self.last_calc,
-        self.violated or "none", self.first_violated or 0, self.last_violated or 0)
+    log_debug(msg, self.name, self:get_counter('pps'), self.pps_rate or self.pps_burst_rate or 0, self:get_counter('bps'), self.bps_rate or self.bps_burst_rate or 0, self:get_counter('total_packets'), (self:get_counter('total_bits') / 1024 / 1024))
 end
 
 return Bucket
