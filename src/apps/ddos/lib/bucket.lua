@@ -25,11 +25,15 @@ local Bucket = {
     },
 }
 
+local counter_name = "ddos/%s/%s"
 
 local function open_counter(bucket, metric)
-    local counter_name = "ddos/%s/%s"
     cnt = counter.open(counter_name:format(bucket, metric))
     return cnt
+end
+
+local function close_counter(bucket, metric)
+    return counter.delete(counter_name:format(bucket, metric))
 end
 
 
@@ -205,8 +209,8 @@ end
 
 function Bucket:stop()
     -- Delete all registered counters
-    for name, c in pairs(self.counters) do
-        counter.delete(name)
+    for metric, c in pairs(self.counters) do
+        close_counter(self.name, metric)
     end
 end
 
