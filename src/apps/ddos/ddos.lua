@@ -378,9 +378,9 @@ function selftest ()
         local rules = {}
 
         -- Create 1000 rules
-        for i = 1, 1000 do
+        for i = 1, 500 do
             local rule_name = "rule_%d"
-            local rule_filter = "udp and port %d"
+            local rule_filter = "udp and src port %d"
 
             rules[i] = {
                 name = rule_name:format(i),
