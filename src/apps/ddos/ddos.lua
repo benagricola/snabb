@@ -315,8 +315,8 @@ function selftest ()
 
     -- Check correct violation type and rates
     assert(ntp_bucket.violated == 'pps_burst', "Bucket violation type incorrect or not violated")
-    assert(ntp_bucket:get_counter('pps') >= ntp_bucket.pps_burst_rate, "Bucket pps less than burst rate")
-    assert(all_bucket:get_counter('pps') == 0 and all_bucket:get_counter('bps') == 0 and not all_bucket.violated, "Catchall bucket not zero, packets matched wrong rule!")
+    assert(ntp_bucket.pps >= ntp_bucket.pps_burst_rate, "Bucket pps less than burst rate")
+    assert(all_bucket.pps == 0 and all_bucket.bps == 0 and not all_bucket.violated, "Catchall bucket not zero, packets matched wrong rule!")
 
     return true
 end
