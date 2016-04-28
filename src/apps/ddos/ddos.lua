@@ -308,11 +308,12 @@ function selftest ()
     config.link(c, "detector.output -> sink.input")
     app.configure(c)
 
-    app.main({ duration = 2 })
-
     local ddos_app = app.app_table.detector
     local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
     local all_bucket = ddos_app.buckets:get_bucket_by_name('all')
+
+    app.main({ duration = 2 })
+
 
     -- Check correct violation type and rates
     assert(ntp_bucket.violated == bucket.violations.PPS_BURST, "Bucket violation type incorrect or not violated")
@@ -336,10 +337,14 @@ function selftest ()
     }
 
     config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
+    app.configure(c)
+
     local dns_bucket = ddos_app.buckets:get_bucket_by_name('dns')
     local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
 
     app.main({ duration = 2 })
+
+
 
     -- Check correct violation type and rates
     assert(not dns_bucket.violated, "DNS Bucket violated, should not be!")
