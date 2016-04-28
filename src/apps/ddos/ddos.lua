@@ -275,8 +275,9 @@ end
 function selftest ()
     print("DDoS selftest")
 
-    local pcap = require("apps.pcap.pcap")
+    local pcap       = require("apps.pcap.pcap")
     local basic_apps = require("apps.basic.basic_apps")
+    local bucket     = require("apps.ddos.lib.bucket")
 
     -- Generate random data to DDoS app
 
@@ -314,7 +315,7 @@ function selftest ()
     local all_bucket = ddos_app.buckets:get_bucket_by_name('all')
 
     -- Check correct violation type and rates
-    assert(ntp_bucket.violated == ntp_bucket:violations.PPS_BURST, "Bucket violation type incorrect or not violated")
+    assert(ntp_bucket.violated == bucket.violations.PPS_BURST, "Bucket violation type incorrect or not violated")
     assert(ntp_bucket:get_counter('pps') >= ntp_bucket.pps_burst_rate, "Bucket pps less than burst rate")
     assert(all_bucket:get_counter('pps') == 0 and all_bucket:get_counter('bps') == 0 and not all_bucket.violated, "Catchall bucket not zero, packets matched wrong rule!")
 
@@ -343,7 +344,7 @@ function selftest ()
     -- Check correct violation type and rates
     assert(not dns_bucket.violated, "DNS Bucket violated, should not be!")
     assert(dns_bucket:get_counter('bps') == 0, "DNS bucket BPS is not zero")
-    assert(ntp_bucket:get_counter('bps') ~= 0 and ntp_bucket:get_counter('bps') > ntp_bucket.bps_burst_rate and ntp_bucket.violated == ntp_bucket:violations.BPS_BURST, "Matching bucket recorded no bps, or lower than burst, or not violated")
+    assert(ntp_bucket:get_counter('bps') ~= 0 and ntp_bucket:get_counter('bps') > ntp_bucket.bps_burst_rate and ntp_bucket.violated == bucket.violations.BPS_BURST, "Matching bucket recorded no bps, or lower than burst, or not violated")
 
     return true
 end
