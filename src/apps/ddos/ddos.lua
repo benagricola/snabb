@@ -338,13 +338,22 @@ function selftest ()
         },
     }
 
+    local c = config.new()
+
+    config.app(c, "source", pcap.PcapReader, "apps/ddos/selftest.cap.in")
+    config.app(c, "loop", basic_apps.Repeater)
     config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
+    config.app(c, "sink", pcap.PcapWriter, "apps/ddos/selftest.cap.out")
+
+    config.link(c, "source.output -> loop.input")
+    config.link(c, "loop.output -> detector.input")
+    config.link(c, "detector.output -> sink.input")
     app.configure(c)
 
     app.main({ duration = 2 })
 
     local ddos_app = app.app_table.detector
-    print(ddos_app.buckets)
+    log.print_r(ddos_app.buckets.bucket_names)
     local dns_bucket = ddos_app.buckets:get_bucket_by_name('dns')
     local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
 
