@@ -67,4 +67,14 @@ function Buckets:get_buckets()
     return self.buckets
 end
 
+function Buckets:stop()
+    -- Stop all buckets (e.g. close shared memory)
+    local bucket_count = self.bucket_count
+    local buckets = self.buckets
+    -- For each bucket
+    for i = 1, bucket_count do
+        buckets[i]:stop()
+    end
+end
+
 return Buckets

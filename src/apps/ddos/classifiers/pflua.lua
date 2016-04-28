@@ -59,5 +59,9 @@ function PFLua:periodic()
     -- No Op
 end
 
+function PFLua:stop()
+    -- No Op
+end
+
 
 return PFLua

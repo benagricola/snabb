@@ -159,6 +159,12 @@ function Detector:periodic()
     end
 end
 
+function Detector:stop()
+    log_info("Stop called, calling stop on buckets...")
+    self.classifier:stop()
+    self.buckets:stop()
+end
+
 
 -- This can be thought of as the application loop
 function Detector:push()
