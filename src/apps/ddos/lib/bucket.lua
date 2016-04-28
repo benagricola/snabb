@@ -23,12 +23,6 @@ local Bucket = {
         BPS = 'bps',
         BPS_BURST = 'bps_burst',
     },
-    pps = function(t)
-        return t:get_counter('pps')
-    end,
-    bps = function(t)
-        return t:get_counter('bps')
-    end
 }
 
 
