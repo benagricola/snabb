@@ -278,145 +278,147 @@ function Detector:report()
     self.last_stats = cur
 end
 
-function test_one ()
+
+function selftest ()
     local pcap       = require("apps.pcap.pcap")
     local basic_apps = require("apps.basic.basic_apps")
     local bucket     = require("apps.ddos.lib.bucket")
 
-    -- Generate random data to DDoS app
+    local function test_one ()
 
-    local rules = {
-        {
-            name           = 'ntp',
-            filter         = 'udp and src port 123',
-            pps_rate       = 100,
-            pps_burst_rate = 300,
-        },
-        {
-            name   = 'all',
-            filter = '',
-            pps_rate       = 1000,
-            pps_burst_rate = 3000,
+        -- Generate random data to DDoS app
+
+        local rules = {
+            {
+                name           = 'ntp',
+                filter         = 'udp and src port 123',
+                pps_rate       = 100,
+                pps_burst_rate = 300,
+            },
+            {
+                name   = 'all',
+                filter = '',
+                pps_rate       = 1000,
+                pps_burst_rate = 3000,
+            }
         }
-    }
 
-    local c = config.new()
+        local c = config.new()
 
-    config.app(c, "source", pcap.PcapReader, "apps/ddos/selftest.cap.in")
-    config.app(c, "loop", basic_apps.Repeater)
-    config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
-    config.app(c, "sink", pcap.PcapWriter, "apps/ddos/selftest.cap.out")
+        config.app(c, "source", pcap.PcapReader, "apps/ddos/selftest.cap.in")
+        config.app(c, "loop", basic_apps.Repeater)
+        config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
+        config.app(c, "sink", pcap.PcapWriter, "apps/ddos/selftest.cap.out")
 
-    config.link(c, "source.output -> loop.input")
-    config.link(c, "loop.output -> detector.input")
-    config.link(c, "detector.output -> sink.input")
-    app.configure(c)
+        config.link(c, "source.output -> loop.input")
+        config.link(c, "loop.output -> detector.input")
+        config.link(c, "detector.output -> sink.input")
+        app.configure(c)
 
-    app.main({ duration = 2 })
+        app.main({ duration = 2 })
 
-    local ddos_app = app.app_table.detector
-    local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
-    local all_bucket = ddos_app.buckets:get_bucket_by_name('all')
-
-
-    assert(ntp_bucket and all_bucket, "Could not find created buckets")
-
-    -- Check correct violation type and rates
-    assert(ntp_bucket.violated == bucket.violations.PPS_BURST, "Bucket violation type incorrect or not violated")
-    assert(ntp_bucket:get_counter('pps') >= ntp_bucket.pps_burst_rate, "Bucket pps less than burst rate")
-    assert(all_bucket:get_counter('pps') == 0 and all_bucket:get_counter('bps') == 0 and not all_bucket.violated, "Catchall bucket not zero, packets matched wrong rule!")
-end
-
-function test_two ()
-    local rules = {
-        {
-            name           = 'dns',
-            filter         = 'udp and port 53',
-            bps_rate       = 100,
-            bps_burst_rate = 300,
-        },
-
-        {
-            name           = 'ntp',
-            filter         = 'udp and src port 123',
-            bps_rate       = 100,
-            bps_burst_rate = 300,
-        },
-    }
-
-    local c = config.new()
-
-    config.app(c, "source", pcap.PcapReader, "apps/ddos/selftest.cap.in")
-    config.app(c, "loop", basic_apps.Repeater)
-    config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
-    config.app(c, "sink", pcap.PcapWriter, "apps/ddos/selftest.cap.out")
-
-    config.link(c, "source.output -> loop.input")
-    config.link(c, "loop.output -> detector.input")
-    config.link(c, "detector.output -> sink.input")
-    app.configure(c)
-
-    app.main({ duration = 2 })
-
-    local ddos_app = app.app_table.detector
-    local dns_bucket = ddos_app.buckets:get_bucket_by_name('dns')
-    local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
-
-    assert(dns_bucket and ntp_bucket, "Could not find created buckets")
+        local ddos_app = app.app_table.detector
+        local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
+        local all_bucket = ddos_app.buckets:get_bucket_by_name('all')
 
 
-    -- Check correct violation type and rates
-    assert(not dns_bucket.violated, "DNS Bucket violated, should not be!")
-    assert(dns_bucket:get_counter('bps') == 0, "DNS bucket BPS is not zero")
-    assert(ntp_bucket:get_counter('bps') ~= 0 and ntp_bucket:get_counter('bps') > ntp_bucket.bps_burst_rate and ntp_bucket.violated == bucket.violations.BPS_BURST, "Matching bucket recorded no bps, or lower than burst, or not violated")
-end
+        assert(ntp_bucket and all_bucket, "Could not find created buckets")
 
-function test_three ()
-    local rules = {}
-
-    -- Create 1000 rules
-    for i = 1, 1000 do
-        local rule_name = "rule_%d"
-        local rule_filter = "udp and port %d"
-
-        rules[i] = {
-            name = rule_name:format(i),
-            filter = rule_filter:format(i),
-            pps_rate = 100,
-            bps_rate = 100,
-            pps_burst_rate = 200,
-            bps_burst_rate = 200,
-        }
+        -- Check correct violation type and rates
+        assert(ntp_bucket.violated == bucket.violations.PPS_BURST, "Bucket violation type incorrect or not violated")
+        assert(ntp_bucket:get_counter('pps') >= ntp_bucket.pps_burst_rate, "Bucket pps less than burst rate")
+        assert(all_bucket:get_counter('pps') == 0 and all_bucket:get_counter('bps') == 0 and not all_bucket.violated, "Catchall bucket not zero, packets matched wrong rule!")
     end
 
-    local c = config.new()
+    local function test_two ()
+        local rules = {
+            {
+                name           = 'dns',
+                filter         = 'udp and port 53',
+                bps_rate       = 100,
+                bps_burst_rate = 300,
+            },
 
-    config.app(c, "source", pcap.PcapReader, "apps/ddos/selftest.cap.in")
-    config.app(c, "loop", basic_apps.Repeater)
-    config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
-    config.app(c, "sink", pcap.PcapWriter, "apps/ddos/selftest.cap.out")
+            {
+                name           = 'ntp',
+                filter         = 'udp and src port 123',
+                bps_rate       = 100,
+                bps_burst_rate = 300,
+            },
+        }
 
-    config.link(c, "source.output -> loop.input")
-    config.link(c, "loop.output -> detector.input")
-    config.link(c, "detector.output -> sink.input")
-    app.configure(c)
+        local c = config.new()
 
-    app.main({ duration = 2 })
+        config.app(c, "source", pcap.PcapReader, "apps/ddos/selftest.cap.in")
+        config.app(c, "loop", basic_apps.Repeater)
+        config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
+        config.app(c, "sink", pcap.PcapWriter, "apps/ddos/selftest.cap.out")
 
-    local ddos_app = app.app_table.detector
-    local dns_bucket = ddos_app.buckets:get_bucket_by_name('rule_53')
-    local ntp_bucket = ddos_app.buckets:get_bucket_by_name('rule_123')
+        config.link(c, "source.output -> loop.input")
+        config.link(c, "loop.output -> detector.input")
+        config.link(c, "detector.output -> sink.input")
+        app.configure(c)
 
-    assert(dns_bucket and ntp_bucket, "Could not find created buckets")
+        app.main({ duration = 2 })
+
+        local ddos_app = app.app_table.detector
+        local dns_bucket = ddos_app.buckets:get_bucket_by_name('dns')
+        local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
+
+        assert(dns_bucket and ntp_bucket, "Could not find created buckets")
 
 
-    -- Check correct violation type and rates
-    assert(not dns_bucket.violated, "DNS Bucket violated, should not be!")
-    assert(dns_bucket:get_counter('bps') == 0, "DNS bucket BPS is not zero")
-    assert(ntp_bucket:get_counter('bps') ~= 0 and ntp_bucket:get_counter('bps') > ntp_bucket.bps_burst_rate and ntp_bucket.violated == bucket.violations.BPS_BURST, "Matching bucket recorded no bps, or lower than burst, or not violated")
-end
+        -- Check correct violation type and rates
+        assert(not dns_bucket.violated, "DNS Bucket violated, should not be!")
+        assert(dns_bucket:get_counter('bps') == 0, "DNS bucket BPS is not zero")
+        assert(ntp_bucket:get_counter('bps') ~= 0 and ntp_bucket:get_counter('bps') > ntp_bucket.bps_burst_rate and ntp_bucket.violated == bucket.violations.BPS_BURST, "Matching bucket recorded no bps, or lower than burst, or not violated")
+    end
 
-function selftest ()
+    local function test_three ()
+        local rules = {}
+
+        -- Create 1000 rules
+        for i = 1, 1000 do
+            local rule_name = "rule_%d"
+            local rule_filter = "udp and port %d"
+
+            rules[i] = {
+                name = rule_name:format(i),
+                filter = rule_filter:format(i),
+                pps_rate = 100,
+                bps_rate = 100,
+                pps_burst_rate = 200,
+                bps_burst_rate = 200,
+            }
+        end
+
+        local c = config.new()
+
+        config.app(c, "source", pcap.PcapReader, "apps/ddos/selftest.cap.in")
+        config.app(c, "loop", basic_apps.Repeater)
+        config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
+        config.app(c, "sink", pcap.PcapWriter, "apps/ddos/selftest.cap.out")
+
+        config.link(c, "source.output -> loop.input")
+        config.link(c, "loop.output -> detector.input")
+        config.link(c, "detector.output -> sink.input")
+        app.configure(c)
+
+        app.main({ duration = 2 })
+
+        local ddos_app = app.app_table.detector
+        local dns_bucket = ddos_app.buckets:get_bucket_by_name('rule_53')
+        local ntp_bucket = ddos_app.buckets:get_bucket_by_name('rule_123')
+
+        assert(dns_bucket and ntp_bucket, "Could not find created buckets")
+
+
+        -- Check correct violation type and rates
+        assert(not dns_bucket.violated, "DNS Bucket violated, should not be!")
+        assert(dns_bucket:get_counter('bps') == 0, "DNS bucket BPS is not zero")
+        assert(ntp_bucket:get_counter('bps') ~= 0 and ntp_bucket:get_counter('bps') > ntp_bucket.bps_burst_rate and ntp_bucket.violated == bucket.violations.BPS_BURST, "Matching bucket recorded no bps, or lower than burst, or not violated")
+    end
+
     print("DDoS selftest")
     test_one()
     test_two()
