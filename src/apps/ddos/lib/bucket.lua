@@ -16,18 +16,24 @@ local math_exp      = math.exp
 local math_ceil     = math.ceil
 local app_now       = require("core.app").now
 
-local Bucket = {
+local BucketParent = {
+    -- Metamethod to return instance params as counters
+    __index = function(t, key)
+        log_debug("Attempt to get key %s", key)
+        return t:get_counter(key)
+    end
+}
+
+local Bucket = setmetatable({
     violations = {
         PPS = 'pps',
         PPS_BURST = 'pps_burst',
         BPS = 'bps',
         BPS_BURST = 'bps_burst',
     },
-    -- Metamethod to return instance params as counters
-    __index = function(t, key)
-        return t:get_counter(key)
-    end,
-}
+}, BucketParent)
+
+
 
 
 local function open_counter(bucket, metric)
