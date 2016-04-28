@@ -22,7 +22,11 @@ local Bucket = {
         PPS_BURST = 'pps_burst',
         BPS = 'bps',
         BPS_BURST = 'bps_burst',
-    }
+    },
+    -- Metamethod to return instance params as counters
+    __index = function(t, key)
+        return t:get_counter(key)
+    end,
 }
 
 
