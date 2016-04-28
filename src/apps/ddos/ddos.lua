@@ -416,6 +416,7 @@ function selftest ()
         -- Check correct violation type and rates
         assert(not dns_bucket.violated, "DNS Bucket violated, should not be!")
         assert(dns_bucket:get_counter('bps') == 0, "DNS bucket BPS is not zero")
+        log.print_r(ntp_bucket)
         assert(ntp_bucket:get_counter('bps') ~= 0 and ntp_bucket:get_counter('bps') > ntp_bucket.bps_burst_rate and ntp_bucket.violated == bucket.violations.BPS_BURST, "Matching bucket recorded no bps, or lower than burst, or not violated")
     end
 
