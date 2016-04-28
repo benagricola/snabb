@@ -404,7 +404,7 @@ function selftest ()
         config.link(c, "detector.output -> sink.input")
         app.configure(c)
 
-        app.main({ duration = 2 })
+        app.main({ duration = 4 })
 
         local ddos_app = app.app_table.detector
         local dns_bucket = ddos_app.buckets:get_bucket_by_name('rule_53')
