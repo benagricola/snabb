@@ -315,6 +315,7 @@ function selftest ()
     local all_bucket = ddos_app.buckets:get_bucket_by_name('all')
 
 
+    assert(ntp_bucket and all_bucket, "Could not find created buckets")
 
     -- Check correct violation type and rates
     assert(ntp_bucket.violated == bucket.violations.PPS_BURST, "Bucket violation type incorrect or not violated")
@@ -343,10 +344,11 @@ function selftest ()
     app.main({ duration = 2 })
 
     local ddos_app = app.app_table.detector
+    print(ddos_app.buckets)
     local dns_bucket = ddos_app.buckets:get_bucket_by_name('dns')
     local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
 
-
+    assert(dns_bucket and ntp_bucket, "Could not find created buckets")
 
 
     -- Check correct violation type and rates
