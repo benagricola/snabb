@@ -36,12 +36,10 @@ end
 function Buckets:periodic()
     local bucket_count = self.bucket_count
     local buckets = self.buckets
-    local start = app_now()
     -- For each bucket
     for i = 1, bucket_count do
         buckets[i]:periodic()
     end
-    log_info("Periodic took %ds", app_now() - start)
 end
 
 -- Class method to create buckets
