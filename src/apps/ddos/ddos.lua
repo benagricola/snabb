@@ -314,9 +314,36 @@ function selftest ()
     local all_bucket = ddos_app.buckets:get_bucket_by_name('all')
 
     -- Check correct violation type and rates
-    assert(ntp_bucket.violated == 'pps_burst', "Bucket violation type incorrect or not violated")
+    assert(ntp_bucket.violated == Bucket.violations.PPS_BURST, "Bucket violation type incorrect or not violated")
     assert(ntp_bucket:get_counter('pps') >= ntp_bucket.pps_burst_rate, "Bucket pps less than burst rate")
     assert(all_bucket:get_counter('pps') == 0 and all_bucket:get_counter('bps') == 0 and not all_bucket.violated, "Catchall bucket not zero, packets matched wrong rule!")
+
+    local rules = {
+        {
+            name           = 'dns',
+            filter         = 'udp and port 53',
+            bps_rate       = 100,
+            bps_burst_rate = 300,
+        },
+
+        {
+            name           = 'ntp',
+            filter         = 'udp and src port 123',
+            bps_rate       = 100,
+            bps_burst_rate = 300,
+        },
+    }
+
+    config.app(c, "detector", Detector, { config_file_path = nil, rules = rules })
+    local dns_bucket = ddos_app.buckets:get_bucket_by_name('dns')
+    local ntp_bucket = ddos_app.buckets:get_bucket_by_name('ntp')
+
+    app.main({ duration = 2 })
+
+    -- Check correct violation type and rates
+    assert(not dns_bucket.violated, "DNS Bucket violated, should not be!")
+    assert(dns_bucket:get_counter('bps') == 0, "DNS bucket BPS is not zero")
+    assert(ntp_bucket:get_counter('bps') ~= 0 and ntp_bucket:get_counter('bps') > ntp_bucket.bps_burst_rate and ntp_bucket.violated == Bucket.violations.BPS_BURST, "Matching bucket recorded no bps, or lower than burst, or not violated")
 
     return true
 end
