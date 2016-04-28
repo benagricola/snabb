@@ -16,7 +16,14 @@ local math_exp      = math.exp
 local math_ceil     = math.ceil
 local app_now       = require("core.app").now
 
-local Bucket = {}
+local Bucket = {
+    violations = {
+        PPS = 'pps',
+        PPS_BURST = 'pps_burst',
+        BPS = 'bps',
+        BPS_BURST = 'bps_burst',
+    }
+}
 
 function Bucket:new(cfg)
     local self = {
@@ -118,17 +125,17 @@ function Bucket:check_violation(now)
     -- If self is violated either in burst or moving average, set the violation type
     if self.bps_rate then
         if bps > self.bps_burst_rate then
-            violation = "bps_burst"
+            violation = Bucket.violations.BPS_BURST
         elseif self.avg_bps > self.bps_rate then
-            violation = "bps"
+            violation = Bucket.violations.BPS
         end
     end
 
     if self.pps_rate then
         if pps > self.pps_burst_rate then
-            violation = 'pps_burst'
+            violation = Bucket.violations.PPS_BURST
         elseif self.avg_pps > self.pps_rate then
-            violation = "pps"
+            violation = Bucket.violations.PPS
         end
     end
 
