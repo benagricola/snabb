@@ -49,7 +49,7 @@ end
 function Untagger:push ()
    local input, output = self.input.input, self.output.output
    local tag = self.tag
-   for _=1,link.nreadable(input) do
+   while not link_empty(input) do
       local pkt = receive(input)
       local payload = pkt.data + o_ethernet_ethertype
       if cast(uint32_ptr_t, payload)[0] ~= tag then
