@@ -145,7 +145,7 @@ function print_latency_metrics (new_stats, last_stats)
    local min, avg, max = summarize_latency(cur, prev)
    print_row(global_metrics_row,
              {"Min breath (us)", "Average", "Maximum"})
-   
+
    print_row(global_metrics_row,
              {float_s(min*1e6), float_s(avg*1e6), float_s(max*1e6)})
    print("\n")
@@ -154,7 +154,7 @@ end
 local link_metrics_row = {31, 7, 7, 7, 7, 7}
 function print_link_metrics (new_stats, last_stats)
    print_row(link_metrics_row,
-             {"Links (rx/tx/txdrop in Mpps)", "rx", "tx", "rxGb", "txGb", "txdrop"})
+             {"Links (rx/tx/txdrop in Kpps)", "rx", "tx", "rxGb", "txGb", "txdrop"})
    for linkspec, link in pairs(new_stats.links) do
       if last_stats.links[linkspec] then
          local rx = tonumber(new_stats.links[linkspec].rxpackets - last_stats.links[linkspec].rxpackets)
@@ -164,7 +164,7 @@ function print_link_metrics (new_stats, last_stats)
          local drop = tonumber(new_stats.links[linkspec].txdrop - last_stats.links[linkspec].txdrop)
          print_row(link_metrics_row,
                    {linkspec,
-                    float_s(rx / 1e6), float_s(tx / 1e6),
+                    float_s(rx / 1e3), float_s(tx / 1e3),
                     float_s(rxbytes / (1000^3)), float_s(txbytes / (1000^3)),
                     float_s(drop / 1e6)})
       end

@@ -35,13 +35,14 @@ end
 function RawSocket:pull ()
    local l = self.output.tx
    if l == nil then return end
-   while not link.full(l) and self:can_receive() do
+   while self:can_receive() do
       link.transmit(l, self:receive())
    end
 end
 
 function RawSocket:can_receive ()
-   return true
+   local ok, err = S.select({readfds = {self.sock}}, 0)
+   return not (err or ok.count == 0)
 end
 
 function RawSocket:receive ()

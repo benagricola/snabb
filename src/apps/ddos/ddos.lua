@@ -166,12 +166,8 @@ function Detector:stop()
 end
 
 
-function Detector:push()
-    -- No Op
-end
-
 -- This can be thought of as the application loop
-function Detector:pull()
+function Detector:push()
     local i = assert(self.input.input, "input port not found")
 
     -- While link is not empty
