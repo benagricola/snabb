@@ -6,6 +6,7 @@ local lib   = require("core.lib")
 local json  = require("lib.json")
 local intel = require("apps.intel.intel_app")
 local tap   = require("apps.tap.tap")
+local raw   = require("apps.socket.raw")
 local ddos  = require("apps.ddos.ddos")
 
 local usage = require("program.ddos.README_inc")
@@ -39,6 +40,11 @@ local function nic_exists(pci_addr)
    local devices="/sys/bus/pci/devices"
    return dir_exists(("%s/%s"):format(devices, pci_addr)) or
       dir_exists(("%s/0000:%s"):format(devices, pci_addr))
+end
+
+local function tuntap_exists(device)
+    local devices="/sys/devices/virtual/net"
+    return dir_exists(("%s/%s"):format(devices, device))
 end
 
 function parse_args(args)
@@ -78,26 +84,43 @@ function run (args)
 
     config.app(c, "ddos", ddos.Detector, {config_file_path = opt.config_file_path})
 
-    -- If this is a physical NIC the initialise 82599 driver
+    -- If this is a physical NIC then initialise 82599 driver
     if nic_exists(opt.int_in) then
+        log_info("Input interface %s is physical device, initialising...", opt.int_in)
         config.app(c, "int_in", intel.Intel82599, {
             pciaddr = opt.int_in,
         })
         config.link(c, "int_in.rx -> ddos.input")
 
-    -- Otherwise assume TAP device
-    else
+    -- Otherwise check for a tun/tap device
+    elseif tuntap_exists(opt.int_in) then
+        log_info("Input interface %s is tun/tap device, initialising...", opt.int_in)
         config.app(c, "int_in", tap.Tap, opt.int_in)
         config.link(c, "int_in.output -> ddos.input")
+
+    -- Otherwise assume rawsocket
+    else
+        log_info("Input interface %s is unknown device, initialising as RawSocket...", opt.int_in)
+        config.app(c, "int_in", raw.RawSocket, opt.int_in)
+        config.link(c, "int_in.rx -> ddos.input")
     end
 
     if opt.int_out then
+        -- If this is a physical NIC then initialise 82599 driver
         if nic_exists(opt.int_out) then
+            log_info("Output interface %s is physical device, initialising...", opt.int_out)
             config.app(c, "int_out", intel.Intel82599, {
                 pciaddr = opt.int_out,
             })
             config.link(c, "ddos.output -> int_out.tx")
+        -- Otherwise check for a tun/tap device
+        elseif tuntap_exists(opt.int_out) then
+            log_info("Output interface %s is tun/tap device, initialising...", opt.int_out)
+            config.app(c, "int_out", raw.RawSocket, opt.int_out)
+            config.link(c, "ddos.output -> int_out.tx")
+        -- Otherwise assume rawsocket
         else
+            log_info("Output interface %s is unknown device, initialising as RawSocket...", opt.int_out)
             config.app(c, "int_out", tap.Tap, opt.int_out)
             config.link(c, "ddos.output -> int_out.input")
 
