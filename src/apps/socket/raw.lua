@@ -42,16 +42,21 @@ end
 
 function RawSocket:can_receive ()
    local ok, err = S.select({readfds = {self.sock}}, 0)
+   if err then
+      print("CR: " .. tostring(err))
+   end
    return ok and ok.count > 0
 end
 
 function RawSocket:receive ()
    local buffer = ffi.new("uint8_t[?]", C.PACKET_PAYLOAD_SIZE)
    local sz, err = S.read(self.sock, buffer, C.PACKET_PAYLOAD_SIZE)
+   if err then
+      print("R: " .. tostring(err))
+   end
    if not sz then
-        print("RECEIVE: " .. err)
-        return err
-    end
+      return err
+   end
    return packet.from_pointer(buffer, sz)
 end
 
@@ -67,13 +72,18 @@ end
 
 function RawSocket:can_transmit ()
    local ok, err = S.select({writefds = {self.sock}}, 0)
+   if err then
+      print("CT: " .. tostring(err))
+   end
    return ok and ok.count > 0
 end
 
 function RawSocket:transmit (p)
    local sz, err = S.write(self.sock, packet.data(p), packet.length(p))
+   if err then
+      print("T: " .. tostring(err))
+   end
    if not sz then
-       print("TRANSMIT: " .. err)
        return err
    end
    return sz
