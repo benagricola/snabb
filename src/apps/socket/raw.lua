@@ -42,7 +42,11 @@ end
 
 function RawSocket:can_receive ()
    local ok, err = S.select({readfds = {self.sock}}, 0)
-   print("RECEIVE: " .. ok.count)
+   if err then
+      print(err)
+   else
+      print("RECEIVE: " .. ok.count)
+   end
    return not (err or ok.count == 0)
 end
 
