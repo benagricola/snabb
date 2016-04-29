@@ -80,6 +80,7 @@ function RawSocket:transmit (p)
 end
 
 function RawSocket:stop()
+   print("STOP")
    S.close(self.sock)
 end
 
