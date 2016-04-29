@@ -54,7 +54,8 @@ function Untagger:push ()
       local payload = pkt.data + o_ethernet_ethertype
       if cast(uint32_ptr_t, payload)[0] ~= tag then
          -- Incorrect VLAN tag; drop.
-         packet.free(pkt)
+         --packet.free(pkt)
+         transmit(output, pkt)
       else
          local length = pkt.length
          pkt.length = length - 4
