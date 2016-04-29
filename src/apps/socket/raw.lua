@@ -42,7 +42,7 @@ end
 
 function RawSocket:can_receive ()
    local ok, err = S.select({readfds = {self.sock}}, 0)
-   print("CAN RECEIVE: " .. err)
+   print("CAN RECEIVE: " .. (err or "NOERR"))
    return not (err or ok.count == 0)
 end
 
@@ -68,7 +68,7 @@ end
 
 function RawSocket:can_transmit ()
    local ok, err = S.select({writefds = {self.sock}}, 0)
-   print("CAN TRANSMIT: " .. err)
+   print("CAN TRANSMIT: " .. (err or "NOERR"))
    return not (err or ok.count == 0)
 end
 
