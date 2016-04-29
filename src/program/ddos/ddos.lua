@@ -98,7 +98,7 @@ function run (args)
         config.app(c, "int_in", intel.Intel82599, {
             pciaddr = opt.int_in,
         })
-        config.link(c, "int_in.rx -> ddos.input")
+        config.link(c, "int_in.tx -> ddos.input")
 
     -- Otherwise check for a tun/tap device
     elseif tuntap_exists(opt.int_in) then
@@ -110,7 +110,7 @@ function run (args)
     else
         log_info("Input interface %s is unknown device, initialising as RawSocket...", opt.int_in)
         config.app(c, "int_in", raw.RawSocket, opt.int_in)
-        config.link(c, "int_in.rx -> ddos.input")
+        config.link(c, "int_in.tx -> ddos.input")
     end
 
     if opt.int_out then
@@ -120,12 +120,12 @@ function run (args)
             config.app(c, "int_out", intel.Intel82599, {
                 pciaddr = opt.int_out,
             })
-            config.link(c, "ddos.output -> int_out.tx")
+            config.link(c, "ddos.output -> int_out.rx")
         -- Otherwise check for a tun/tap device
         elseif tuntap_exists(opt.int_out) then
             log_info("Output interface %s is tun/tap device, initialising...", opt.int_out)
             config.app(c, "int_out", raw.RawSocket, opt.int_out)
-            config.link(c, "ddos.output -> int_out.tx")
+            config.link(c, "ddos.output -> int_out.rx")
         -- Otherwise assume rawsocket
         else
             log_info("Output interface %s is unknown device, initialising as RawSocket...", opt.int_out)
