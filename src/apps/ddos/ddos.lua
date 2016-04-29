@@ -145,7 +145,7 @@ function Detector:periodic()
     self.buckets:periodic()
 
     -- Write status out to file
-    self:write_status()
+    --self:write_status()
 
     -- Attempt to reload config if necessary, but do this after logging the last interval data
     self:read_config()
