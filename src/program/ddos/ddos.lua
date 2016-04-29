@@ -9,6 +9,13 @@ local tap   = require("apps.tap.tap")
 local raw   = require("apps.socket.raw")
 local ddos  = require("apps.ddos.ddos")
 
+local log           = require("lib.log")
+local log_info      = log.info
+local log_warn      = log.warn
+local log_error     = log.error
+local log_critical  = log.critical
+local log_debug     = log.debug
+
 local usage = require("program.ddos.README_inc")
 
 local long_opts = {
