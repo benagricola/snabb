@@ -38,6 +38,12 @@ function RawSocket:pull ()
    while not link.full(l) and self:can_receive() do
       link.transmit(l, self:receive())
    end
+   if link.full(l) then
+       print("OUTPUT LINK FULL")
+    end
+   if not self:can_receive() then
+       print("CANNOT RECEIVE")
+    end
 end
 
 function RawSocket:can_receive ()
@@ -57,13 +63,15 @@ function RawSocket:push ()
    if l == nil then return end
    while not link.empty(l) and self:can_transmit() do
       local p = link.receive(l)
-      self:transmit(p)
+      local err = self:transmit(p)
+      print(err)
       packet.free(p)
    end
 end
 
 function RawSocket:can_transmit ()
    local ok, err = S.select({writefds = {self.sock}}, 0)
+
    return not (err or ok.count == 0)
 end
 
@@ -99,8 +107,8 @@ function selftest ()
                         dst = localhost,
                         next_header = 59, -- No next header.
                         hop_limit = 1}))
-   dg_tx:push(ethernet:new({src = src, 
-                            dst = dst, 
+   dg_tx:push(ethernet:new({src = src,
+                            dst = dst,
                             type = 0x86dd}))
    -- Transmit packet.
    link.transmit(lo.input.rx, dg_tx:packet())
