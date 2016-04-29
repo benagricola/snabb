@@ -305,7 +305,6 @@ function breathe ()
       -- For each link that has new data, run the receiving app
       for i = 1, #link_array do
          local link = link_array[i]
-         if firstloop or link.has_new_data then
             link.has_new_data = false
             local receiver = app_array[link.receiving_app]
             if receiver.push and not receiver.dead then
@@ -314,7 +313,6 @@ function breathe ()
                zone()
                progress = true
             end
-         end
       end
       firstloop = false
    until not progress  -- Stop after no link had new data
