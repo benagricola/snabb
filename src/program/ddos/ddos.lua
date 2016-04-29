@@ -151,7 +151,7 @@ function run (args)
     else
         log_info("Input interface %s is unknown device, initialising as RawSocket...", opt.int_in)
         config.app(c, "int_in", raw.RawSocket, opt.int_in)
-        config.link(c, "int_in.rx -> " .. input_link)
+        config.link(c, "int_in.tx -> " .. input_link)
     end
 
     if opt.int_out then
