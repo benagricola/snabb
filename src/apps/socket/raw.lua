@@ -53,7 +53,10 @@ end
 function RawSocket:receive ()
    local buffer = ffi.new("uint8_t[?]", C.PACKET_PAYLOAD_SIZE)
    local sz, err = S.read(self.sock, buffer, C.PACKET_PAYLOAD_SIZE)
-   if not sz then return err end
+   if not sz then
+        print("RECEIVE: " .. err)
+        return err
+    end
    return packet.from_pointer(buffer, sz)
 end
 
@@ -75,12 +78,14 @@ end
 
 function RawSocket:transmit (p)
    local sz, err = S.write(self.sock, packet.data(p), packet.length(p))
-   if not sz then return err end
+   if not sz then
+       print("TRANSMIT: " .. err)
+       return err
+   end
    return sz
 end
 
 function RawSocket:stop()
-   print("STOP")
    S.close(self.sock)
 end
 
