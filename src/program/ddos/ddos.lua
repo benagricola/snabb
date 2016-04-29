@@ -50,8 +50,9 @@ local function nic_exists(pci_addr)
 end
 
 local function tuntap_exists(device)
-    local devices="/sys/devices/virtual/net"
-    return dir_exists(("%s/%s"):format(devices, device))
+    -- Check for tun_flags, this exists if the device is tun/tap
+    local devices="/sys/devices/virtual/net/%s/tun_flags"
+    return dir_exists(devices:format(device))
 end
 
 function parse_args(args)
