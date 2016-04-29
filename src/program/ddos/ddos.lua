@@ -119,7 +119,7 @@ function run (args)
     -- If input VLAN is specified, place untagger between input interface and DDoS detector
     local demux_link
     if opt.in_vlan then
-        demux_link = opt.in_vlan
+        demux_link = "vlan" .. opt.in_vlan
     else
         demux_link = "native"
     end
