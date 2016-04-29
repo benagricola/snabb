@@ -46,7 +46,7 @@ function Untagger:new(conf)
    return o
 end
 
-function Untagger:push ()
+function Untagger:pull ()
    local input, output = self.input.input, self.output.output
    local tag = self.tag
    while not link.empty(input) do
