@@ -7,7 +7,7 @@ local json  = require("lib.json")
 local intel = require("apps.intel.intel_app")
 local tap   = require("apps.tap.tap")
 local raw   = require("apps.socket.raw")
-local vlan  = require("apps.lwaftr.vlan")
+local vlan  = require("apps.vlan.vlan")
 local ddos  = require("apps.ddos.ddos")
 
 local log           = require("lib.log")
@@ -114,23 +114,14 @@ function run (args)
 
     config.app(c, "ddos", ddos.Detector, {config_file_path = opt.config_file_path})
 
-    -- If input VLAN is specified, place untagger between input interface and DDoS detector
-    local input_link
-    if opt.in_vlan then
-        config.app(c, "untagger", vlan.Untagger, { tag = opt.in_vlan })
-        input_link  = "untagger.input"
-        config.link(c, "untagger.output -> ddos.input")
-    else
-        input_link = "ddos.input"
-    end
+    config.app(c, "vlanmux", vlan.VlanMux)
 
-    local output_link
-    if opt.out_vlan then
-        config.app(c, "tagger", vlan.Tagger, { tag = opt.out_vlan })
-        output_link  = "tagger.output"
-        config.link(c, "ddos.output -> tagger.input")
+    -- If input VLAN is specified, place untagger between input interface and DDoS detector
+    local demux_link
+    if opt.in_vlan then
+        demux_link = opt.in_vlan
     else
-        output_link  = "ddos.output"
+        demux_link = "native"
     end
 
     -- If this is a physical NIC then initialise 82599 driver
@@ -139,20 +130,22 @@ function run (args)
         config.app(c, "int_in", intel.Intel82599, {
             pciaddr = opt.int_in,
         })
-        config.link(c, "int_in.tx -> " .. input_link)
+        config.link(c, "int_in.tx -> vlanmux.trunk")
 
     -- Otherwise check for a tun/tap device
     elseif tuntap_exists(opt.int_in) then
         log_info("Input interface %s is tun/tap device, initialising...", opt.int_in)
         config.app(c, "int_in", tap.Tap, opt.int_in)
-        config.link(c, "int_in.output -> " .. input_link)
+        config.link(c, "int_in.output -> vlanmux.trunk")
 
     -- Otherwise assume rawsocket
     else
         log_info("Input interface %s is unknown device, initialising as RawSocket...", opt.int_in)
         config.app(c, "int_in", raw.RawSocket, opt.int_in)
-        config.link(c, "int_in.tx -> " .. input_link)
+        config.link(c, "int_in.tx -> vlanmux.trunk")
     end
+
+    config.link(c, "vlanmux." .. demux_link .. " -> ddos.input")
 
     if opt.int_out then
         -- If this is a physical NIC then initialise 82599 driver
