@@ -1,14 +1,14 @@
 -- Use of this source code is governed by the Apache 2.0 license; see COPYING.
 
 -- counter.lua - Count discrete events for diagnostic purposes
--- 
+--
 -- This module provides a thin layer for representing 64-bit counters
 -- as shared memory objects.
 --
 -- Counters let you efficiently count discrete events (packet drops,
 -- etc) and are accessible as shared memory from other processes such
 -- as monitoring tools. Counters hold 64-bit unsigned integers.
--- 
+--
 -- Use counters to make troubleshooting easier. For example, if there
 -- are several reasons that an app could drop a packet then you can
 -- use counters to keep track of why this is actually happening.
@@ -18,7 +18,7 @@
 -- file that contains the 64-bit value in native host endian.
 --
 -- For example, you can read a counter on the command line with od(1):
--- 
+--
 --     # od -A none -t u8 /var/run/snabb/15347/counter/a
 --     43
 
@@ -44,7 +44,9 @@ local private = {}
 local numbers = {} -- name -> number
 
 function open (name, readonly)
-   if numbers[name] then error("counter already opened: " .. name) end
+   if numbers[name] then
+       return private[numbers[name]]
+   end
    local n = #public+1
    if readonly then
       public[n] = shm.open(name, counter_t, readonly)
