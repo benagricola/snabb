@@ -214,9 +214,27 @@ function Bucket:stop()
     end
 end
 
+local function pad(s, width, padder)
+  padder = strrep(padder or " ", abs(width))
+  if width < 0 then return strsub(padder .. s, width) end
+  return strsub(s .. padder, 1, width)
+end
+
 function Bucket:status()
-    local msg = "%s [%s]: %d/%d pps - %d/%d bps - Totals: %d Kpackets / %d Mbytes"
-    log_debug(msg, self.name, self.violated or "OK", self:get_counter('pps'), self.pps_rate or self.pps_burst_rate or 0, self:get_counter('bps'), self.bps_rate or self.bps_burst_rate or 0, self:get_counter('total_packets') / 1000, (self:get_counter('total_bits') / 8388608))
+    local msg = "%s [%s]: %d/%d pps burst - %d/%d pps avg - %d/%d Mbps burst - %d/%d Mbps avg - Totals: %d Kpackets / %d Mbytes"
+    log_debug(msg,
+        self.name,
+        self.violated or "OK",
+        self:get_counter('pps'),
+        self.pps_burst_rate or 0,
+        self:get_counter('avg_pps'),
+        self.pps_rate or 0,
+        self:get_counter('bps') / 1048576,
+        self.bps_burst_rate or 0,
+        self:get_counter('avg_bps'),
+        self.bps_rate or 0,
+        self:get_counter('total_packets') / 1000,
+        self:get_counter('total_bits') / 8388608)
 end
 
 return Bucket
