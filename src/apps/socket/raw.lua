@@ -42,6 +42,7 @@ end
 
 function RawSocket:can_receive ()
    local sock = self.sock
+   print(S.getfd(sock))
    local ok, err = S.select({readfds = {sock}}, 0)
    if err then
       print("CR: " .. tostring(err))
