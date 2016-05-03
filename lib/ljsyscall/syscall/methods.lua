@@ -140,8 +140,9 @@ end
 
 -- TODO note this is not very friendly to user, as will just get EBADF from all calls
 function fmeth.close(fd)
-  print("Socket GCd")
   local fileno = getfd(fd)
+  print("GCing file: " .. tostring(fileno))
+  print(debug_traceback())
   if fileno == -1 then return true end -- already closed
   local ok, err = S.close(fileno)
   fd.filenum = -1 -- make sure cannot accidentally close this fd object again

@@ -25,7 +25,6 @@ function RawSocket:new (ifname)
 
    local addr = t.sockaddr_ll{sll_family = c.AF.PACKET, sll_ifindex = index, sll_protocol = tp}
    local ok, err = S.bind(sock, addr)
-   sock:nogc()
    if not ok then
       S.close(sock)
       error(err)
