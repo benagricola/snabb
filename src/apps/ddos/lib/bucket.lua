@@ -229,12 +229,12 @@ function Bucket:status()
         self.pps_burst_rate or 0,
         self:get_counter('avg_pps'),
         self.pps_rate or 0,
-        self:get_counter('bps') / 1048576,
+        self:get_counter('bps') / 1048576.00,
         self.bps_burst_rate or 0,
-        self:get_counter('avg_bps') / 1048576,
+        self:get_counter('avg_bps') / 1048576.00,
         self.bps_rate or 0,
-        self:get_counter('total_packets') / 1000,
-        self:get_counter('total_bits') / 8388608)
+        self:get_counter('total_packets') / 1000.00,
+        self:get_counter('total_bits') / 8388608.00)
 end
 
 return Bucket
