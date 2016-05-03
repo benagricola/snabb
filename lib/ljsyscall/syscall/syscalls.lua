@@ -76,7 +76,6 @@ end
 
 -- generic system calls
 function S.close(fd)
-    print(debug.traceback())
     return retbool(C.close(getfd(fd)))
 end
 function S.chdir(path) return retbool(C.chdir(path)) end

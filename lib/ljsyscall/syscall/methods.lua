@@ -4,7 +4,7 @@
 
 local require, error, assert, tonumber, tostring,
 setmetatable, pairs, ipairs, unpack, rawget, rawset,
-pcall, type, table, string = 
+pcall, type, table, string =
 require, error, assert, tonumber, tostring,
 setmetatable, pairs, ipairs, unpack, rawget, rawset,
 pcall, type, table, string
@@ -140,6 +140,7 @@ end
 
 -- TODO note this is not very friendly to user, as will just get EBADF from all calls
 function fmeth.close(fd)
+  print("Socket GCd")
   local fileno = getfd(fd)
   if fileno == -1 then return true end -- already closed
   local ok, err = S.close(fileno)
