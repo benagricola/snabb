@@ -21,6 +21,7 @@ function RawSocket:new (ifname)
 
    local tp = h.htons(c.ETH_P["ALL"])
    local sock, err = S.socket(c.AF.PACKET, bit.bor(c.SOCK.RAW, c.SOCK.NONBLOCK), tp)
+   sock:nogc()
    if not sock then error(err) end
 
    local addr = t.sockaddr_ll{sll_family = c.AF.PACKET, sll_ifindex = index, sll_protocol = tp}
@@ -35,10 +36,8 @@ end
 function RawSocket:pull ()
    local l = self.output.tx
    if l == nil then return end
-   local recv_win = self:can_receive()
-   while not link.full(l) and recv_win do
-      link.transmit(l, self:receive(recv_win))
-      recv_win = self:can_receive()
+   while not link.full(l) and self:can_receive() do
+      link.transmit(l, self:receive())
    end
 end
 
@@ -48,16 +47,12 @@ function RawSocket:can_receive ()
    if err then
       print("CR: " .. tostring(err))
    end
-   if ok and ok.count > 0 then
-      return ok.count
-   end
-
-   return nil, err
+   return ok and ok.count > 0
 end
 
-function RawSocket:receive (win)
-   local buffer = ffi.new("uint8_t[?]", win)
-   local sz, err = S.read(self.sock, buffer, win)
+function RawSocket:receive ()
+   local buffer = ffi.new("uint8_t[?]", C.PACKET_PAYLOAD_SIZE)
+   local sz, err = S.read(self.sock, buffer, C.PACKET_PAYLOAD_SIZE)
    if err then
       print("R: " .. tostring(err))
    end
