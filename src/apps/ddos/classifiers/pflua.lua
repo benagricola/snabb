@@ -21,20 +21,25 @@ function PFLua:new(rules)
     return self
 end
 
-function PFLua:create_rule(rule)
-    log_info("Compiling rule %s with filter '%s'", rule.name, rule.filter)
+function PFLua:create_rule(rule, index)
+    local rules = self.rules
+
+    -- Delete old rule name ref before overwriting
+    if rules[index] then
+        self.rule_names:remove(rules[index].name)
+    end
+
     local filter = pf.compile_filter(rule.filter)
     assert(filter)
-    local rule_count = self.rule_count + 1
-    self.rules[rule_count] = filter
-    self.rule_count = rule_count
-    self.rule_names[rule.name] = rule_count
+    rules[index] = filter
+    self.rule_count = #rules
+    self.rule_names[rule.name] = index
 end
 
 function PFLua:create_rules(rules)
     -- For each input rule
     for rule_num, rule in ipairs(rules) do
-        self:create_rule(rule)
+        self:create_rule(rule, rule_num)
     end
 end
 
