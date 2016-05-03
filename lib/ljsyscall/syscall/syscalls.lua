@@ -2,8 +2,6 @@
 -- note that where functions are identical if present but may be missing they can also go here
 -- note that OS specific calls are loaded at the end so they may override generic calls here
 
-local STP = require("lib.lua.StackTracePlus")
-
 local require, error, assert, tonumber, tostring,
 setmetatable, pairs, ipairs, unpack, rawget, rawset,
 pcall, type, table, string =
@@ -78,8 +76,7 @@ end
 
 -- generic system calls
 function S.close(fd)
-    print("CLOSING")
-    STP.stacktrace()
+    print(debug.traceback())
     return retbool(C.close(getfd(fd)))
 end
 function S.chdir(path) return retbool(C.chdir(path)) end
