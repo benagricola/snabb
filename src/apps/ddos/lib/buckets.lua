@@ -23,13 +23,18 @@ function Buckets:new(cfg)
 end
 
 
-function Buckets:create_bucket(cfg)
+function Buckets:create_bucket(cfg, index)
     local buckets = self.buckets
     local new_bucket = bucket:new(cfg)
-    local bucket_count = self.bucket_count+1
-    buckets[bucket_count] = new_bucket
-    self.bucket_count = bucket_count
-    self.bucket_names[cfg.name] = bucket_count
+
+    if buckets[index] then
+        -- Delete old bucket name ref before overwriting
+        self.bucket_names:remove(buckets[index].name)
+    end
+
+    buckets[index] = new_bucket
+    self.bucket_count = #buckets
+    self.bucket_names[cfg.name] = index
     return new_bucket
 end
 
@@ -46,7 +51,7 @@ end
 function Buckets:create_buckets(rules)
     local buckets = {}
     for rule_num, rule in ipairs(rules) do
-        self:create_bucket(rule)
+        self:create_bucket(rule, rule_num)
     end
 end
 
