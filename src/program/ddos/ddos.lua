@@ -55,7 +55,7 @@ end
 local function tuntap_exists(device)
     -- Check for tun_flags, this exists if the device is tun/tap
     local devices="/sys/devices/virtual/net/%s/tun_flags"
-    return dir_exists(devices:format(device))
+    return file_exists(devices:format(device))
 end
 
 function parse_args(args)
