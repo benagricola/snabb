@@ -141,7 +141,7 @@ end
 -- TODO note this is not very friendly to user, as will just get EBADF from all calls
 function fmeth.close(fd)
   local fileno = getfd(fd)
-  print("Closing FD " .. tostring(fileno) .. " at " .. debug.backtrace())
+  print("Closing FD " .. tostring(fileno) .. " at " .. debug.traceback())
   if fileno == -1 then return true end -- already closed
   local ok, err = S.close(fileno)
   fd.filenum = -1 -- make sure cannot accidentally close this fd object again
