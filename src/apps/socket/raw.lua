@@ -35,8 +35,10 @@ end
 function RawSocket:pull ()
    local l = self.output.tx
    if l == nil then return end
-   while not link.full(l) and self:can_receive() do
-      link.transmit(l, self:receive())
+   local recv_win = self:can_receive()
+   while not link.full(l) and recv_win do
+      link.transmit(l, self:receive(recv_win))
+      recv_win = self:can_receive()
    end
 end
 
@@ -46,12 +48,16 @@ function RawSocket:can_receive ()
    if err then
       print("CR: " .. tostring(err))
    end
-   return ok and ok.count > 0
+   if ok and ok.count > 0 then
+      return ok.count
+   end
+
+   return nil, err
 end
 
-function RawSocket:receive ()
-   local buffer = ffi.new("uint8_t[?]", C.PACKET_PAYLOAD_SIZE)
-   local sz, err = S.read(self.sock, buffer, C.PACKET_PAYLOAD_SIZE)
+function RawSocket:receive (win)
+   local buffer = ffi.new("uint8_t[?]", win)
+   local sz, err = S.read(self.sock, buffer, win)
    if err then
       print("R: " .. tostring(err))
    end

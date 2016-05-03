@@ -28,13 +28,11 @@ local Bucket = {
 local counter_name = "ddos/%s/%s"
 
 local function open_counter(bucket, metric)
-    print("Opening counter: " .. counter_name:format(bucket, metric))
     cnt = counter.open(counter_name:format(bucket, metric))
     return cnt
 end
 
 local function close_counter(bucket, metric)
-    print("Closing counter: " .. counter_name:format(bucket, metric))
     return counter.delete(counter_name:format(bucket, metric))
 end
 
