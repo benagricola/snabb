@@ -50,7 +50,7 @@ end
 
 function RawSocket:receive ()
    local buffer = ffi.new("uint8_t[?]", C.PACKET_PAYLOAD_SIZE)
-   local sz, err = S.read(self.sock, buffer, C.PACKET_PAYLOAD_SIZE)
+   local sz, err = S.recvfrom(self.sock, buffer, C.PACKET_PAYLOAD_SIZE)
    if sz == -1 then
       print("R: SZ MINUS ONE")
    end
