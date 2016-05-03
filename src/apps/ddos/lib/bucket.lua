@@ -221,7 +221,7 @@ local function pad(s, width, padder)
 end
 
 function Bucket:status()
-    local msg = "%s [%s]: %d/%d pps burst - %d/%d pps avg - %f/%f Mbps burst - %f/%f Mbps avg - Totals: %f Kpackets / %f Mbytes"
+    local msg = "%s [%s]: %d/%d pps burst - %d/%d pps avg - %.2f/%.2f Mbps burst - %.2f/%.2f Mbps avg - Totals: %d Kpackets / %d Mbytes"
     log_debug(msg,
         self.name,
         self.violated or "OK",
