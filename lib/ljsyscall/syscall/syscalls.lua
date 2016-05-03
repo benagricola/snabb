@@ -78,6 +78,7 @@ end
 
 -- generic system calls
 function S.close(fd)
+    print("CLOSING")
     STP.stacktrace()
     return retbool(C.close(getfd(fd)))
 end
