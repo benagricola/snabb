@@ -41,6 +41,10 @@ local msgpack       = require("lib.msgpack")
 local m_pack        = msgpack.pack
 local m_unpack      = msgpack.unpack
 
+local classifier = require("apps.ddos.classifiers.pflua")
+local buckets    = require("apps.ddos.lib.buckets")
+
+
 msgpack.packers['cdata'] = function (buffer, data)
     -- If cdata is a counter, conver to number and encode unsigned
     if ffi.istype("struct counter", data) then
@@ -61,9 +65,6 @@ Detector = {}
 function Detector:new (arg)
     local conf = arg and config.parse_app_arg(arg) or {}
 
-    local classifier = require("apps.ddos.classifiers.pflua")
-    local buckets    = require("apps.ddos.lib.buckets")
-
     local o = {
         config_file_path = conf.config_file_path,
         status_file_path = "/dev/shm/detector-status",
@@ -71,8 +72,8 @@ function Detector:new (arg)
         last_report   = 0,
         last_periodic = 0,
         core          = conf.core,
-        classifier    = classifier:new(),
-        buckets       = buckets:new(),
+        classifier    = nil,
+        buckets       = nil,
     }
 
     self = setmetatable(o, {__index = Detector})
@@ -122,6 +123,10 @@ end
 
 
 function Detector:parse_config(cfg)
+    -- Load new instances of bucket and classifier
+    self.classifier = classifier:new()
+    self.buckets    = buckets:new()
+
     -- Create rules based on config
     self.classifier:create_rules(cfg.rules)
 
