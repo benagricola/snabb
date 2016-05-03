@@ -50,7 +50,7 @@ configs   = counter.open("engine/configs")   -- Total configurations loaded
 -- The default is dynamic adjustment which should work well for the
 -- majority of cases.
 
-Hz = False
+Hz = false
 sleep = 0
 maxsleep = 100
 
