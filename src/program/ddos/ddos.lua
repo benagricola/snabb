@@ -92,7 +92,7 @@ function parse_args(args)
     end
 
     if opt.in_vlan then
-        log_info("Accepting VLAN tags %d from input interface %s", table.concat(opt.in_vlan,", "), opt.int_in)
+        log_info("Accepting VLAN tags %s from input interface %s", table.concat(opt.in_vlan,", "), opt.int_in)
     end
 
     if not opt.int_out then
