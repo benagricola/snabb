@@ -142,7 +142,7 @@ end
 function fmeth.close(fd)
   local fileno = getfd(fd)
   print("GCing file: " .. tostring(fileno))
-  print(debug_traceback())
+  print(debug.traceback())
   if fileno == -1 then return true end -- already closed
   local ok, err = S.close(fileno)
   fd.filenum = -1 -- make sure cannot accidentally close this fd object again
