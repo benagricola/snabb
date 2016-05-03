@@ -4,7 +4,7 @@
 
 local require, error, assert, tonumber, tostring,
 setmetatable, pairs, ipairs, unpack, rawget, rawset,
-pcall, type, table, string = 
+pcall, type, table, string =
 require, error, assert, tonumber, tostring,
 setmetatable, pairs, ipairs, unpack, rawget, rawset,
 pcall, type, table, string
@@ -75,7 +75,10 @@ local function retiter(ret, err, array)
 end
 
 -- generic system calls
-function S.close(fd) return retbool(C.close(getfd(fd))) end
+function S.close(fd)
+    print("CALLED S.CLOSE")
+    return retbool(C.close(getfd(fd)))
+end
 function S.chdir(path) return retbool(C.chdir(path)) end
 function S.fchdir(fd) return retbool(C.fchdir(getfd(fd))) end
 function S.fchmod(fd, mode) return retbool(C.fchmod(getfd(fd), c.MODE[mode])) end
