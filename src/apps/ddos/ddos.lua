@@ -168,12 +168,10 @@ end
 
 -- This can be thought of as the application loop
 function Detector:push()
-    local i = assert(self.input.input, "input port not found")
-
-    -- While link is not empty
-    while not link_empty(i) do
-        -- Process packet
-        self:process_packet(i)
+    for _, l in ipairs(self.input) do
+        while not link_empty(l) do
+            self:process_packet(l)
+        end
     end
 
     -- Run periodic method (TODO: may need moving inside while loop above
