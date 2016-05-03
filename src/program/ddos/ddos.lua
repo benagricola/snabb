@@ -28,7 +28,6 @@ local long_opts = {
     core     = "n",
     busywait = "b",
     invlan   = 1,
-    outvlan  = 2,
 }
 
 local function fatal(msg,...)
@@ -72,9 +71,13 @@ function parse_args(args)
     function handlers.g (arg) opt.group            = arg end
     function handlers.n (arg) opt.core             = arg end
     function handlers.b (arg) opt.busywait         = true end
-    function handlers.invlan (arg) opt.in_vlan     = tonumber(arg) end
-    function handlers.outvlan (arg) opt.out_vlan   = tonumber(arg) end
-
+    function handlers.invlan (arg)
+        local vlans = {}
+        for vlan in string.gmatch(arg, '([^,]+)') do
+            vlans[#vlans+1] = tonumber(vlan)
+        end
+        opt.in_vlan = vlans
+    end
 
     args = lib.dogetopt(args, handlers, "hc:i:o:g:c:n:b", long_opts)
 
@@ -89,16 +92,11 @@ function parse_args(args)
     end
 
     if opt.in_vlan then
-        log_info("Stripping VLAN %d from input interface %s", opt.in_vlan, opt.int_in)
+        log_info("Accepting VLAN tags %d from input interface %s", table.concat(opt.in_vlan,", "), opt.int_in)
     end
 
     if not opt.int_out then
         log_info("Not forwarding captured traffic...")
-    else
-        if opt.out_vlan then
-            log_info("Stripping VLAN %d from output interface %s", opt.out_vlan, opt.int_out)
-        end
-
     end
 
     return opt
@@ -115,14 +113,6 @@ function run (args)
     config.app(c, "ddos", ddos.Detector, {config_file_path = opt.config_file_path})
 
     config.app(c, "vlanmux", vlan.VlanMux)
-
-    -- If input VLAN is specified, place untagger between input interface and DDoS detector
-    local demux_link
-    if opt.in_vlan then
-        demux_link = "vlan" .. opt.in_vlan
-    else
-        demux_link = "native"
-    end
 
     -- If this is a physical NIC then initialise 82599 driver
     if nic_exists(opt.int_in) then
@@ -145,7 +135,18 @@ function run (args)
         config.link(c, "int_in.tx -> vlanmux.trunk")
     end
 
-    config.link(c, "vlanmux." .. demux_link .. " -> ddos.input")
+    if opt.in_vlan then
+        for _, vlan in ipairs(opt.in_vlan) do
+            -- Deal with native vlan (i.e. untagged)
+            if vlan == 0 then
+                vlan = "native"
+            else
+                vlan = "vlan" .. vlan
+            end
+
+            config.link(c, "vlanmux." .. vlan ..  " -> ddos.input")
+        end
+    end
 
     if opt.int_out then
         -- If this is a physical NIC then initialise 82599 driver
@@ -154,17 +155,17 @@ function run (args)
             config.app(c, "int_out", intel.Intel82599, {
                 pciaddr = opt.int_out,
             })
-            config.link(c, output_link .. " -> int_out.rx")
+            config.link(c, "ddos.output -> int_out.rx")
         -- Otherwise check for a tun/tap device
         elseif tuntap_exists(opt.int_out) then
             log_info("Output interface %s is tun/tap device, initialising...", opt.int_out)
             config.app(c, "int_out", raw.RawSocket, opt.int_out)
-            config.link(c, output_link .. " -> int_out.rx")
+            config.link(c, "ddos.output -> int_out.rx")
         -- Otherwise assume rawsocket
         else
             log_info("Output interface %s is unknown device, initialising as RawSocket...", opt.int_out)
             config.app(c, "int_out", tap.Tap, opt.int_out)
-            config.link(c, output_link .. " -> int_out.input")
+            config.link(c, "ddos.output -> int_out.input")
 
         end
 
