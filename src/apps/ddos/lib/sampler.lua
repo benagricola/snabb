@@ -111,7 +111,8 @@ end
 
 
 function Sample:value(value, count)
-    if not value then
+    -- False is a valid value!
+    if value == nil then
         log_error("Tried to sample a nil value!")
         return
     end
