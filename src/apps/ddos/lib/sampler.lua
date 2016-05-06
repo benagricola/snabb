@@ -176,7 +176,7 @@ function SampleSet:sample(p)
     end
 
 
-    local p_data = packet.data(packet)
+    local p_data = packet.data(p)
 
     local ethertype = rd16(p_data + o_ethernet_ethertype)
 
