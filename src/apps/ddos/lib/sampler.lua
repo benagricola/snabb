@@ -24,6 +24,8 @@ local rd16, wr16, rd32, wr32 = lwutil.rd16, lwutil.wr16, lwutil.rd32, lwutil.wr3
 local n_ethertype_ipv4     = constants.n_ethertype_ipv4
 local n_ethertype_ipv6     = constants.n_ethertype_ipv6
 local o_ethernet_ethertype = constants.o_ethernet_ethertype
+local o_ipv4_proto         = constants.o_ipv4_proto
+local ethernet_header_size = constants.ethernet_header_size
 
 local afi = {
     ipv4 = 'ipv4',
@@ -182,7 +184,7 @@ function SampleSet:sample(p)
 
     -- If IPv4 packet, parse as such
     if ethertype == n_ethertype_ipv4 then
-        p_data = p_data + constants.ethernet_header_size
+        p_data = p_data + ethernet_header_size
 
         self.afi:value(afi.ipv4) -- Add '1' to incidence of ipv4 traffic
 
