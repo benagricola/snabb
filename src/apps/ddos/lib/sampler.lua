@@ -181,7 +181,7 @@ function SampleSet:sample(p)
     local ethertype = rd16(p_data + o_ethernet_ethertype)
 
     -- If IPv4 packet, parse as such
-    if ethertype == ethertype_ipv4 then
+    if ethertype == n_ethertype_ipv4 then
         p_data = p_data + constants.ethernet_header_size
 
         self.afi:value(afi.ipv4) -- Add '1' to incidence of ipv4 traffic
