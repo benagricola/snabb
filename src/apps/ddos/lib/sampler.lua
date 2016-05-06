@@ -123,7 +123,7 @@ end
 
 
 
-local SampleSet = {}
+SampleSet = {}
 
 function SampleSet:new(cfg)
     local self = {
