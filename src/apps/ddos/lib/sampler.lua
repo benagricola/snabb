@@ -194,7 +194,7 @@ function SampleSet:new(cfg)
         max_size           = 0,
 
         invalid_ip_version = Sample:new(0.8, 2), -- Limit to 2 discrete values - true and false!
-        invalid_length     = Sample:new(0.8, 2), -- Limit to 2 discrete values - true and false!
+        invalid_ip_length  = Sample:new(0.8, 2), -- Limit to 2 discrete values - true and false!
         fragment           = 0,
 
         afi                = Sample:new(0.8, 3), -- Certainty of 0.8, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
