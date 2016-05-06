@@ -190,6 +190,7 @@ function SampleSet:sample(p)
 
         -- Parse IPv4 Protocol
         local proto = p_data + o_ipv4_proto
+        log_debug("Protocol found: " .. tonumber(proto))
         self.protocol:value(tonumber(proto))
 
 
