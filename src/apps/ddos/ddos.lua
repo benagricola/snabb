@@ -143,6 +143,9 @@ function Detector:periodic()
     end
 end
 
+function Detector:report()
+    -- No-Op right now
+end
 
 function Detector:stop()
     log_info("Stop called, calling stop on buckets...")
