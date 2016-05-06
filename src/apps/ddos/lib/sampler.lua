@@ -33,6 +33,7 @@ local afi = {
 -- Represents a sample of discrete values, tracking a count for each value and a total.
 -- Limits to the number of discrete values can be added
 local Sample = {}
+
 function Sample:new(certainty, limit)
     if certainty <= 0.5 then
         log_error("Certainty must be greater than 0.5 otherwise we cant calculate the majority of traffic!")
