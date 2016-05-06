@@ -16,7 +16,7 @@ local math_exp      = math.exp
 local math_fmod     = math.fmod
 local math_ceil     = math.ceil
 local app_now       = require("core.app").now
-local ss            = require("apps.ddos.lib.sampler")
+local SampleSet     = require("apps.ddos.lib.sampler").SampleSet
 
 local Bucket = {
     violations = {
@@ -109,7 +109,7 @@ function Bucket:add_packet(packet)
     if self.violated and math_fmod(cur_packets, sample_rate) == 0 then
         -- Create new sampler if it doesnt exist
         if not self.sampler then
-            self.sampler = ss.SampleSet:new()
+            self.sampler = SampleSet:new()
         end
         local sampler = self.sampler
         sampler:sample(packet)
