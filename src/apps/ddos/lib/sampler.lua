@@ -255,12 +255,15 @@ function SampleSet:sample(p)
         local proto = get_ipv4_proto(e_payload)
         self.protocol:value(tonumber(proto))
 
+        log_info("Parse addresses")
         -- Parse src and dst addresses
         local src_ip = get_ipv4_src(e_payload)
         self.src_hosts:value(src_ip)
 
         local dst_ip = get_ipv4_dst(e_payload)
         self.dst_hosts:value(dst_ip)
+
+        log_info("Parse subnets")
 
         -- Parse src and dst subnets based on a mask
         local src_subnet = get_subnet_from_ip(src_ip)
@@ -277,6 +280,7 @@ function SampleSet:sample(p)
         log_error("Attempted to sample packet with unsupported ethertype %d", tonumber(ethertype))
     end
 
+    log_info("Parse Invalids")
     self.invalid_ip_length:value(valid_ip_length)
     self.invalid_ip_version:value(valid_ip_version)
     self.finished = app_now()
