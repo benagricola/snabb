@@ -32,6 +32,18 @@ local afi = {
     ipv6 = 'ipv6',
 }
 
+local function get_ethernet_payload(p)
+    return p.data + ethernet_header_size
+end
+
+local function get_ethertype(p)
+    return rd16(p.data + o_ethernet_ethertype)
+end
+
+local function get_ipv4_proto(p)
+    return p[o_ipv4_proto]
+end
+
 -- Represents a sample of discrete values, tracking a count for each value and a total.
 -- Limits to the number of discrete values can be added
 local Sample = {}
@@ -178,19 +190,18 @@ function SampleSet:sample(p)
     end
 
 
-    local p_data = packet.data(p)
-
-    local ethertype = rd16(p_data + o_ethernet_ethertype)
+    local ethertype = get_ethertype(p)
+    local e_payload = get_ethernet_payload(p)
 
     -- If IPv4 packet, parse as such
     if ethertype == n_ethertype_ipv4 then
-        p_data = p_data + ethernet_header_size
 
         self.afi:value(afi.ipv4) -- Add '1' to incidence of ipv4 traffic
 
         -- Parse IPv4 Protocol
-        local proto = p_data + o_ipv4_proto
-        log_debug("Protocol found: " .. tostring(p_data))
+        local proto = get_ipv4_proto(e_payload)
+
+        log_debug("Protocol found: " .. proto)
         self.protocol:value(tonumber(proto))
 
 
