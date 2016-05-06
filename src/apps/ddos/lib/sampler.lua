@@ -27,6 +27,7 @@ local ntohs, ntohl = lwutil.htons, lwutil.htonl
 local n_ethertype_ipv4     = constants.n_ethertype_ipv4
 local n_ethertype_ipv6     = constants.n_ethertype_ipv6
 local o_ethernet_ethertype = constants.o_ethernet_ethertype
+local o_ipv4_ver_and_ihl   = constants.o_ipv4_ver_and_ihl
 local o_ipv4_proto         = constants.o_ipv4_proto
 local o_ipv4_total_length  = constants.o_ipv4_total_length
 local o_ipv4_src_addr      = constants.o_ipv4_src_addr
