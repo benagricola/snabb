@@ -16,32 +16,74 @@ local math_fmod     = math.fmod
 local math_ceil     = math.ceil
 local app_now       = require("core.app").now
 local ffi           = require("ffi")
+local bit           = require("bit")
+local bit_band      = bit.band
 local ffi_cast      = ffi.cast
 local ffi_typeof    = ffi.typeof
 
 local rd16, wr16, rd32, wr32 = lwutil.rd16, lwutil.wr16, lwutil.rd32, lwutil.wr32
+local ntohs, ntohl = lwutil.htons, lwutil.htonl
 
 local n_ethertype_ipv4     = constants.n_ethertype_ipv4
 local n_ethertype_ipv6     = constants.n_ethertype_ipv6
 local o_ethernet_ethertype = constants.o_ethernet_ethertype
 local o_ipv4_proto         = constants.o_ipv4_proto
+local o_ipv4_total_length  = constants.o_ipv4_total_length
+local o_ipv4_src_addr      = constants.o_ipv4_src_addr
+local o_ipv4_dst_addr      = constants.o_ipv4_dst_addr
 local ethernet_header_size = constants.ethernet_header_size
 
+
 local afi = {
-    ipv4 = 'ipv4',
-    ipv6 = 'ipv6',
+    ipv4    = 'ipv4',
+    ipv6    = 'ipv6',
+    invalid = 'invalid',
 }
+
+-- /24 as hex mask
+local subnet_mask = 0xFFFFFF00
 
 local function get_ethernet_payload(p)
     return p.data + ethernet_header_size
 end
 
+
 local function get_ethertype(p)
     return rd16(p.data + o_ethernet_ethertype)
 end
 
+
+local function get_ipv4_version(p)
+    local byte = p[o_ipv4_ver_and_ihl]
+    return bit_band(byte, 0xF0) / 4
+end
+
+
+local function get_ipv4_ihl(p)
+    local byte = p[o_ipv4_ver_and_ihl]
+    return bit_band(byte, 0x0F) * 4
+end
+
+
+local function get_ipv4_total_length(p)
+    return ntohs(rd16(p + o_ipv4_total_length))
+end
+
+
 local function get_ipv4_proto(p)
     return p[o_ipv4_proto]
+end
+
+local function get_ipv4_src(p)
+    return ntohl(rd32(p + o_ipv4_src_addr))
+end
+
+local function get_ipv4_dst(p)
+    return ntohl(rd32(p + o_ipv4_dst_addr))
+end
+
+local function get_subnet_from_ip(ip)
+    return bit_band(ip, subnet_mask)
 end
 
 -- Represents a sample of discrete values, tracking a count for each value and a total.
@@ -150,8 +192,8 @@ function SampleSet:new(cfg)
         min_size           = 0,
         max_size           = 0,
 
-        invalid_length     = 0,
-        invalid_version    = 0,
+        invalid_ip_version = Sample:new(0.8, 2), -- Limit to 2 discrete values - true and false!
+        invalid_length     = Sample:new(0.8, 2), -- Limit to 2 discrete values - true and false!
         fragment           = 0,
 
         afi                = Sample:new(0.8, 3), -- Certainty of 0.8, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
@@ -189,27 +231,52 @@ function SampleSet:sample(p)
         self.min_size = packet_length
     end
 
+    local received_length = p.length
+    local ethertype       = get_ethertype(p)
+    local e_payload       = get_ethernet_payload(p)
 
-    local ethertype = get_ethertype(p)
-    local e_payload = get_ethernet_payload(p)
+    local valid_ip_version = false
+    local valid_ip_length  = false
 
     -- If IPv4 packet, parse as such
     if ethertype == n_ethertype_ipv4 then
-
         self.afi:value(afi.ipv4) -- Add '1' to incidence of ipv4 traffic
+
+        -- Check valid version
+        local h_version = get_ipv4_version(e_payload)
+        valid_ip_version = h_version == 4
+
+        -- Check received data > 60 and matches length in IP Header
+        local expected_length = get_ipv4_total_length(e_payload)
+        valid_ip_length = (expected_length + ethernet_header_size) ~= received_length and received_length > 60
 
         -- Parse IPv4 Protocol
         local proto = get_ipv4_proto(e_payload)
-
-        log_debug("Protocol found: " .. proto)
         self.protocol:value(tonumber(proto))
 
+        -- Parse src and dst addresses
+        local src_ip = get_ipv4_src(e_payload)
+        self.src_hosts:value(src_ip)
+
+        local dst_ip = get_ipv4_dst(e_payload)
+        self.dst_hosts:value(dst_ip)
+
+        -- Parse src and dst subnets based on a mask
+        local src_subnet = get_subnet_from_ip(src_ip)
+        local dst_subnet = get_subnet_from_ip(dst_ip)
+
+        self.src_subnets:value(src_subnet)
+        self.dst_subnets:value(dst_subnet)
 
     -- elseif ethertype == ethertype_ipv6 then
+        --self.afi:value(afi.ipv6)
 
     else
+        self.afi:value(afi.invalid)
         log_error("Attempted to sample packet with unsupported ethertype %d", tonumber(ethertype))
-        return false
     end
+
+    self.invalid_ip_length:value(valid_ip_length)
+    self.invalid_ip_version:value(valid_ip_version)
     self.finished = app_now()
 end
