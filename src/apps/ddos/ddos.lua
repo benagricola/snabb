@@ -10,31 +10,12 @@ local log_warn      = log.warn
 local log_error     = log.error
 local log_critical  = log.critical
 local log_debug     = log.debug
-local datagram      = require("lib.protocol.datagram")
-local ethernet      = require("lib.protocol.ethernet")
-local ipv4          = require("lib.protocol.ipv4")
-local ipv6          = require("lib.protocol.ipv6")
-local counter       = require("core.counter")
-local shm           = require("core.shm")
 local ffi           = require("ffi")
 local link          = require("core.link")
 local link_receive  = link.receive
 local link_empty    = link.empty
-local link_transmit = link.transmit
-local link_receive  = link.receive
-local link_nreadable = link.nreadable
-local link_nwritable = link.nwritable
-local link_receive  = link.receive
 local packet        = require("core.packet")
 local packet_free   = packet.free
-local packet_clone  = packet.clone
-local math          = require("math")
-local math_max      = math.max
-local math_min      = math.min
-local math_floor    = math.floor
-local math_ceil     = math.ceil
-local math_abs      = math.abs
-local math_exp      = math.exp
 local json          = require("lib.json")
 local json_decode   = json.decode
 local msgpack       = require("lib.msgpack")
@@ -45,6 +26,7 @@ local classifier = require("apps.ddos.classifiers.pflua")
 local buckets    = require("apps.ddos.lib.buckets")
 
 
+-- Msgpack Monkeypatch to auto-encode cdata counters as an unsigned integer
 msgpack.packers['cdata'] = function (buffer, data)
     -- If cdata is a counter, conver to number and encode unsigned
     if ffi.istype("struct counter", data) then
@@ -52,9 +34,6 @@ msgpack.packers['cdata'] = function (buffer, data)
         msgpack.packers['unsigned'](buffer, num)
     end
 end
-
-local C = ffi.C
-local mask = ffi.C.LINK_RING_SIZE-1
 
 require("core.link_h")
 
@@ -85,7 +64,7 @@ function Detector:new (arg)
     end
 
     -- datagram object for reuse
-    self.d = datagram:new()
+    -- self.d = datagram:new()
 
     return self
 end
@@ -164,6 +143,7 @@ function Detector:periodic()
     end
 end
 
+
 function Detector:stop()
     log_info("Stop called, calling stop on buckets...")
     self.classifier:stop()
@@ -184,6 +164,7 @@ function Detector:push()
     self:periodic()
 end
 
+
 -- Processes a single received packet. Classify it by defined rules and place
 -- into a bucket.
 function Detector:process_packet(i)
@@ -196,89 +177,23 @@ function Detector:process_packet(i)
     -- local d = self.d:new(p, ethernet, {delayed_commit = true})
 
     -- Check packet against BPF rules
-
     local bucket_id = classifier:match(p)
 
     -- If packet didn't match a rule (no bucket returned), ignore
-    if bucket_id == nil then
+    if not bucket_id then
         -- Free packet
         packet_free(p)
         return
     end
 
     local bucket = buckets:get_bucket_by_id(bucket_id)
-    bucket:add_packet(p.length)
+    bucket:add_packet(p)
 
     -- TODO: If rule is in violation, log packet?
+    -- TODO: Calculate attacked host or subnet?
 
     -- Free packet
     packet_free(p)
-end
-
-
-
-function Detector:print_packet(d)
-    -- Top of the stack is 'ethernet'
-    -- Next down is AFI, ipv4/ipv6
-    local ethernet  = d:parse()
-    local ip_hdr    = d:parse()
-
-    local src, dst
-
-    local ethernet_type = ethernet:type()
-
-    local afi
-
-    if ethernet_type == 0x0800 then
-        src = ipv4:ntop(ip_hdr:src())
-        dst = ipv4:ntop(ip_hdr:dst())
-        afi = 'ipv4'
-    elseif ethernet_type == 0x86dd then
-        src = ipv6:ntop(ip_hdr:src())
-        dst = ipv6:ntop(ip_hdr:dst())
-        afi = 'ipv6'
-    end
-
-    local proto_type = ip_hdr:protocol()
-
-    local proto_hdr = d:parse()
-
-    local src_port = proto_hdr:src_port()
-    local dst_port = proto_hdr:dst_port()
-
-
-    print(table.concat({
-        afi,
-        " Packet, proto ",
-        tostring(proto_type),
-        " ",
-        src,
-        ':',
-        src_port,
-        ' -> ',
-        dst,
-        ':',
-        dst_port,
-        ' matched filter: ',
-        rule.filter}
-    ))
-end
-
-
-function Detector:get_stats_snapshot()
-    return link.stats(self.input.input)
-end
-
-
-function Detector:report()
-    if self.last_stats == nil then
-        self.last_stats = self:get_stats_snapshot()
-        return
-    end
-    last = self.last_stats
-    cur = self:get_stats_snapshot()
-
-    self.last_stats = cur
 end
 
 

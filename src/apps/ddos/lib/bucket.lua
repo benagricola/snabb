@@ -13,6 +13,7 @@ local log_debug     = log.debug
 local counter       = require("core.counter")
 local math          = require("math")
 local math_exp      = math.exp
+local math_fmod     = math.fmod
 local math_ceil     = math.ceil
 local app_now       = require("core.app").now
 
@@ -46,6 +47,8 @@ function Bucket:new(cfg)
         bps_burst_rate = cfg.bps_burst_rate,
         pps_rate       = cfg.pps_rate,
         bps_rate       = cfg.bps_rate,
+        sample_rate    = cfg.sample_rate or 1000, -- Sample every 100 packets when violated
+        max_captured   = cfg.max_captured or 5000, -- Capture 5000 packets when violated (and sampled)
         counters       = {
             pps           = open_counter(cfg.name, 'pps'),
             bps           = open_counter(cfg.name, 'bps'),
@@ -56,11 +59,11 @@ function Bucket:new(cfg)
         },
         cur_packets    = 0,
         cur_bits       = 0,
-        last_update    = app_now(), -- Set so first calculation works
         last_calc      = app_now(), -- Set so first calculation works
         violated       = false,
         first_violated = 0,
-        last_violated  = 0
+        last_violated  = 0,
+        sampler        = nil,
     }
 
     if self.pps_burst_rate == nil and self.pps_rate then
@@ -95,11 +98,25 @@ function Bucket:new(cfg)
 end
 
 
-function Bucket:add_packet(size)
-    self.cur_packets = self.cur_packets + 1
-    self.cur_bits    = self.cur_bits + size
-end
+function Bucket:add_packet(packet)
+    local sample_rate = self.sample_rate
 
+    local cur_packets = self.cur_packets + 1
+    local cur_bits    = self.cur_bits + packet.length
+
+    -- If bucket is violated, sample packet based on desired
+    if self.violated and math_fmod(cur_packets, sample_rate) == 0 then
+        -- Create new sampler if it doesnt exist
+        if not self.sampler then
+            self.sampler = SampleSet:new()
+        end
+        local sampler = self.sampler
+        sampler:sample(packet)
+    end
+
+    self.cur_packets = cur_packets
+    self.cur_bits    = cur_bits
+end
 
 function Bucket:calculate_rate(now)
     local exp_value = self.exp_value
@@ -193,6 +210,7 @@ function Bucket:check_violation(now)
         self.last_violated = now
     elseif self.violated then
         self.violated = false
+        self.first_violated = 0
     end
 end
 
