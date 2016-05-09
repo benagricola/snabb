@@ -190,9 +190,9 @@ function SampleSet:new(cfg)
         sampled_packets    = 0, -- Note - this is total packets *sampled*, multiply by sample rate for approximate total packet count
         sampled_bits       = 0, -- Note - this is total bits *sampled*, multiply by sample rate for approximate total bit count
 
-        avg_size           = 0,
-        min_size           = 0,
-        max_size           = 0,
+        avg_packet_size    = 0,
+        min_packet_size    = 0,
+        max_packet_size    = 0,
 
         invalid_ip_version = Sample:new(0.8, 2), -- Limit to 2 discrete values - true and false!
         invalid_ip_length  = Sample:new(0.8, 2), -- Limit to 2 discrete values - true and false!
@@ -225,12 +225,12 @@ function SampleSet:sample(p)
     -- TODO: Moving average over reduced number of samples may make more sense in practice
     -- avg -= avg / N;
     -- avg += new_sample / N;
-    self.avg_size = self.sampled_bits / self.sampled_packets
+    self.avg_packet_size = self.sampled_bits / self.sampled_packets
 
-    if packet_length > self.max_size then
-        self.max_size = packet_length
-    elseif packet_length < self.min_size then
-        self.min_size = packet_length
+    if packet_length > self.max_packet_size then
+        self.max_packet_size = packet_length
+    elseif packet_length < self.min_packet_size then
+        self.min_packet_size = packet_length
     end
 
     local received_length = p.length

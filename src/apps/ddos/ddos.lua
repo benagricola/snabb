@@ -55,6 +55,8 @@ function Detector:new (arg)
         buckets       = nil,
     }
 
+    o.status_temp_path = '.' .. o.status_file_path .. '-temp'
+
     self = setmetatable(o, {__index = Detector})
 
     log_info("Reading initial config...")
@@ -71,9 +73,18 @@ end
 
 
 function Detector:write_status()
-    local status_file = assert(io.open(self.status_file_path, "w"))
+    local status_temp_path = self.status_temp_path
+    local status_file_path = self.status_file_path
+
+    -- Write file and then rename into new file
+    local status_file = assert(io.open(status_temp_path, "w"))
     status_file:write(m_pack(self.buckets:get_buckets()))
     status_file:close()
+
+    -- Rename new file
+    if not S.rename(status_temp_path, status_file_path) then
+        log_error("Unable to rename detector status file '%s' to '%s'!", status_temp_path, status_file_path)
+    end
 end
 
 

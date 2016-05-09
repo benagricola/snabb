@@ -108,11 +108,11 @@ function Bucket:add_packet(packet)
     local cur_packets = self.cur_packets + 1
     local cur_bits    = self.cur_bits + packet.length
 
-    -- If bucket is violated, sample packet based on desired
+    -- If bucket is violated, sample packet based on desired rate
     if self.violated and math_fmod(cur_packets, sample_rate) == 0 then
         -- Create new sampler if it doesnt exist
         if not self.sampler then
-            self.sampler = SampleSet:new()
+            self.sampler = SampleSet:new(self.name)
         end
         local sampler = self.sampler
         sampler:sample(packet)
