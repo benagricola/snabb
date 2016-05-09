@@ -55,7 +55,7 @@ function Detector:new (arg)
         buckets       = nil,
     }
 
-    o.status_temp_path = '.' .. o.status_file_path .. '-temp'
+    o.status_temp_path = o.status_file_path .. '-temp'
 
     self = setmetatable(o, {__index = Detector})
 
