@@ -4,19 +4,20 @@
 
 module(..., package.seeall)
 
-local log           = require("lib.log")
-local log_info      = log.info
-local log_warn      = log.warn
-local log_error     = log.error
-local log_critical  = log.critical
-local log_debug     = log.debug
-local counter       = require("core.counter")
-local math          = require("math")
-local math_exp      = math.exp
-local math_fmod     = math.fmod
-local math_ceil     = math.ceil
-local app_now       = require("core.app").now
-local SampleSet     = require("apps.ddos.lib.sampler").SampleSet
+local log            = require("lib.log")
+local log_info       = log.info
+local log_warn       = log.warn
+local log_error      = log.error
+local log_critical   = log.critical
+local log_debug      = log.debug
+local log_num_prefix = log.num_prefix
+local counter        = require("core.counter")
+local math           = require("math")
+local math_exp       = math.exp
+local math_fmod      = math.fmod
+local math_ceil      = math.ceil
+local app_now        = require("core.app").now
+local SampleSet      = require("apps.ddos.lib.sampler").SampleSet
 
 local Bucket = {
     violations = {
@@ -240,20 +241,26 @@ local function pad(s, width, padder)
 end
 
 function Bucket:status()
-    local msg = "%s [%s]: %d/%d pps burst - %d/%d pps avg - %.2f/%.2f Mbps burst - %.2f/%.2f Mbps avg - Totals: %d Kpackets / %d Mbytes"
+    -- Check for sampler
+    if self.violated and self.sampler then
+        self.sampler:status()
+    end
+
+    local msg = "%s [%s]: %s/%s pps burst - %s/%s pps avg - %s/%s bps burst - %s/%s bps avg - Totals: %d packets / %d bytes"
     log_debug(msg,
         self.name,
         self.violated or "OK",
-        self:get_counter('pps'),
-        self.pps_burst_rate or 0,
-        self:get_counter('avg_pps'),
-        self.pps_rate or 0,
-        self:get_counter('bps') / 1048576,
-        self.bps_burst_rate or 0,
-        self:get_counter('avg_bps') / 1048576,
-        self.bps_rate or 0,
-        self:get_counter('total_packets') / 1000,
-        self:get_counter('total_bits') / 8388608)
+        log_num_prefix(self:get_counter('pps')),
+        log_num_prefix(self.pps_burst_rate or 0),
+        log_num_prefix(self:get_counter('avg_pps')),
+        log_num_prefix(self.pps_rate or 0),
+        log_num_prefix(self:get_counter('bps')),
+        log_num_prefix(self.bps_burst_rate or 0),
+        log_num_prefix(self:get_counter('avg_bps')),
+        log_num_prefix(self.bps_rate or 0),
+        log_num_prefix(self:get_counter('total_packets')),
+        log_num_prefix(self:get_counter('total_bits')/8)
+    )
 end
 
 return Bucket

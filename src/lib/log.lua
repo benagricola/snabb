@@ -1,11 +1,13 @@
 local app_now = require("core.app").now
+local string_format = require("string").format
 
 local _M = {}
+
 
 local function log(msg, level, ...)
     local now = tonumber(app_now())
     local fmt = '[%d] %s: %s'
-    print(fmt:format(now, level, msg:format(...)))
+    print(string_format(fmt, now, level, string_format(msg, ...)))
 end
 
 function _M.info(msg, ...)
@@ -26,6 +28,22 @@ end
 
 function _M.debug(msg, ...)
     log(msg, 'DEBUG', ...)
+end
+
+function _M.num_prefix(num)
+    if num > 1e12 then
+        return string_format("%0.2fT", tostring(num / 1e12))
+    end
+    if num > 1e9 then
+        return string_format("%0.2fG", tostring(num / 1e9))
+    end
+    if num > 1e6 then
+        return string_format("%0.2fM", tostring(num / 1e6))
+    end
+    if num > 1e3 then
+        return string_format("%0.2fk", tostring(num / 1e3))
+    end
+    return string_format("%0.2f", tostring(num))
 end
 
 function _M.print_r ( t )

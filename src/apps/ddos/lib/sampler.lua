@@ -282,3 +282,8 @@ function SampleSet:sample(p)
     self.invalid_ip_version:value(valid_ip_version)
     self.finished = app_now()
 end
+
+
+function SampleSet:status()
+    log_debug("SampleSet Status")
+end
