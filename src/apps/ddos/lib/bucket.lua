@@ -11,6 +11,8 @@ local log_error      = log.error
 local log_critical   = log.critical
 local log_debug      = log.debug
 local log_num_prefix = log.num_prefix
+local string         = require("string")
+local string_rep     = string.rep
 local counter        = require("core.counter")
 local math           = require("math")
 local math_exp       = math.exp
@@ -246,10 +248,14 @@ function Bucket:status()
         self.sampler:status()
     end
 
+    local pad_name = self.name .. string_rep(' ', 15 - #self.name)
+    local violated = self.violated or "OK"
+    local pad_violated = violated .. string_rep(' ', 10 - #violated)
+
     local msg = "%s [%s]: %s/%s pps burst - %s/%s pps avg - %s/%s bps burst - %s/%s bps avg - Totals: %s packets / %s bytes"
     log_debug(msg,
-        self.name,
-        self.violated or "OK",
+        pad_name,
+        pad_violated,
         log_num_prefix(self:get_counter('pps')),
         log_num_prefix(self.pps_burst_rate or 0),
         log_num_prefix(self:get_counter('avg_pps')),
