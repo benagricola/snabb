@@ -259,7 +259,7 @@ function Bucket:status()
     local violated = self.violated or "OK"
 
     local msg = "%s [%s]: %s/%s pps burst - %s/%s pps avg - %s/%s bps burst - %s/%s bps avg - Totals: %s packets / %s bytes"
-    log_debug(msg,
+    log_info(msg,
         rpad(self.name, 12),
         rpad(violated, 9),
         lpad(log_num_prefix(self:get_counter('pps')), 7),
