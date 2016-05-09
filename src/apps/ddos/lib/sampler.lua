@@ -129,7 +129,7 @@ function Sample:value(value, count)
 
         -- Do not create more unique values if we're already tracking more than 'limit' discrete values
         if val_length > self.limit then
-            log_warn("Unable to create new value '%s', limit %d reached", tostring(value), self.limit)
+            log_debug("Unable to create new value '%s', limit %d reached", tostring(value), self.limit)
             return false
         end
 

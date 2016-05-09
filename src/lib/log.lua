@@ -1,6 +1,8 @@
 local app_now = require("core.app").now
 local string_format = require("string").format
 
+local debug = _G.developer_debug
+
 local _M = {}
 
 
@@ -27,7 +29,10 @@ function _M.critical(msg, ...)
 end
 
 function _M.debug(msg, ...)
-    log(msg, 'DEBUG', ...)
+    -- Only debug log if developer debug is turned on
+    if debug then
+        log(msg, 'DEBUG', ...)
+    end
 end
 
 function _M.num_prefix(num)
