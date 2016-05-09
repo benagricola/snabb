@@ -262,16 +262,16 @@ function Bucket:status()
     log_debug(msg,
         rpad(self.name, 12),
         rpad(violated, 9),
-        lpad(log_num_prefix(self:get_counter('pps')), 6),
-        rpad(log_num_prefix(self.pps_burst_rate or 0), 6),
-        lpad(log_num_prefix(self:get_counter('avg_pps')), 6),
-        rpad(log_num_prefix(self.pps_rate or 0), 6),
-        lpad(log_num_prefix(self:get_counter('bps')), 6),
-        rpad(log_num_prefix(self.bps_burst_rate or 0), 6),
-        lpad(log_num_prefix(self:get_counter('avg_bps')), 6),
-        rpad(log_num_prefix(self.bps_rate or 0), 6),
-        lpad(log_num_prefix(self:get_counter('total_packets')), 6),
-        lpad(log_num_prefix(self:get_counter('total_bits')/8), 6)
+        lpad(log_num_prefix(self:get_counter('pps')), 7),
+        rpad(log_num_prefix(self.pps_burst_rate or 0), 7),
+        lpad(log_num_prefix(self:get_counter('avg_pps')), 7),
+        rpad(log_num_prefix(self.pps_rate or 0), 7),
+        lpad(log_num_prefix(self:get_counter('bps')), 7),
+        rpad(log_num_prefix(self.bps_burst_rate or 0), 7),
+        lpad(log_num_prefix(self:get_counter('avg_bps')), 7),
+        rpad(log_num_prefix(self.bps_rate or 0), 7),
+        lpad(log_num_prefix(self:get_counter('total_packets')), 7),
+        lpad(log_num_prefix(self:get_counter('total_bits')/8), 7)
     )
 end
 
