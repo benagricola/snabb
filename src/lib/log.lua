@@ -32,18 +32,18 @@ end
 
 function _M.num_prefix(num)
     if num > 1e12 then
-        return string_format("%03.2fT", num / 1e12)
+        return string_format("%0.2fT", num / 1e12)
     end
     if num > 1e9 then
-        return string_format("%03.2fG", num / 1e9)
+        return string_format("%0.2fG", num / 1e9)
     end
     if num > 1e6 then
-        return string_format("%03.2fM", num / 1e6)
+        return string_format("%0.2fM", num / 1e6)
     end
     if num > 1e3 then
-        return string_format("%03.2fk", num / 1e3)
+        return string_format("%0.2fk", num / 1e3)
     end
-    return string_format("%03.2f", num)
+    return string_format("%0.2f", num)
 end
 
 function _M.print_r ( t )

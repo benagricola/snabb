@@ -242,30 +242,36 @@ local function pad(s, width, padder)
   return strsub(s .. padder, 1, width)
 end
 
+local function rpad(s, width)
+    return s .. string_rep(' ', width - #s)
+end
+
+local function lpad(s, width)
+    return string_rep(' ', width - #s) .. s
+end
+
 function Bucket:status()
     -- Check for sampler
     if self.violated and self.sampler then
         self.sampler:status()
     end
 
-    local pad_name = self.name .. string_rep(' ', 12 - #self.name)
     local violated = self.violated or "OK"
-    local pad_violated = violated .. string_rep(' ', 9 - #violated)
 
     local msg = "%s [%s]: %s/%s pps burst - %s/%s pps avg - %s/%s bps burst - %s/%s bps avg - Totals: %s packets / %s bytes"
     log_debug(msg,
-        pad_name,
-        pad_violated,
-        log_num_prefix(self:get_counter('pps')),
-        log_num_prefix(self.pps_burst_rate or 0),
-        log_num_prefix(self:get_counter('avg_pps')),
-        log_num_prefix(self.pps_rate or 0),
-        log_num_prefix(self:get_counter('bps')),
-        log_num_prefix(self.bps_burst_rate or 0),
-        log_num_prefix(self:get_counter('avg_bps')),
-        log_num_prefix(self.bps_rate or 0),
-        log_num_prefix(self:get_counter('total_packets')),
-        log_num_prefix(self:get_counter('total_bits')/8)
+        rpad(self.name, 12),
+        rpad(violated, 9),
+        lpad(log_num_prefix(self:get_counter('pps')), 5),
+        rpad(log_num_prefix(self.pps_burst_rate or 0), 5),
+        lpad(log_num_prefix(self:get_counter('avg_pps')), 5),
+        rpad(log_num_prefix(self.pps_rate or 0), 5),
+        lpad(log_num_prefix(self:get_counter('bps')), 5),
+        rpad(log_num_prefix(self.bps_burst_rate or 0), 5),
+        lpad(log_num_prefix(self:get_counter('avg_bps')), 5),
+        rpad(log_num_prefix(self.bps_rate or 0), 5),
+        lpad(log_num_prefix(self:get_counter('total_packets')), 5),
+        lpad(log_num_prefix(self:get_counter('total_bits')/8), 5)
     )
 end
 
