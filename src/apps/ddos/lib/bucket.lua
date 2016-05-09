@@ -246,7 +246,7 @@ function Bucket:status()
         self.sampler:status()
     end
 
-    local msg = "%s [%s]: %s/%s pps burst - %s/%s pps avg - %s/%s bps burst - %s/%s bps avg - Totals: %d packets / %d bytes"
+    local msg = "%s [%s]: %s/%s pps burst - %s/%s pps avg - %s/%s bps burst - %s/%s bps avg - Totals: %s packets / %s bytes"
     log_debug(msg,
         self.name,
         self.violated or "OK",
