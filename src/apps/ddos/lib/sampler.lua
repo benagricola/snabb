@@ -195,6 +195,7 @@ function SampleSet:new(cfg)
         sampled_packets    = 0, -- Note - this is total packets *sampled*, multiply by sample rate for approximate total packet count
         sampled_bits       = 0, -- Note - this is total bits *sampled*, multiply by sample rate for approximate total bit count
 
+        sampled_duration   = 0,
         subnet_mask        = subnet_mask, -- Store subnet mask for use by consuming applications
         avg_packet_size    = 0,
         min_packet_size    = 0,
@@ -287,6 +288,7 @@ function SampleSet:sample(p)
     self.invalid_ip_length:value(valid_ip_length)
     self.invalid_ip_version:value(valid_ip_version)
     self.finished = app_now()
+    self.sampled_duration = self.finished - self.started
 end
 
 
