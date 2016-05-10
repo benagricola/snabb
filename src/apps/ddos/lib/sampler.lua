@@ -77,14 +77,14 @@ local function get_ipv4_proto(p)
     return p[o_ipv4_proto]
 end
 
-local function int_to_dotted(ip)
-    local octets = {
-        bit_band(ip, 0x000000FF),
-        bit_band(ip, 0x0000FF00),
-        bit_band(ip, 0x00FF0000),
-        bit_band(ip, 0xFF000000)
-    }
-    return table.concat(octets, ".")
+local function int_to_dotted(num)
+    while num > 0 do
+        local octet = num % 256
+        num = num - octet
+        num = num / 256
+        table_insert(octets,1,octet)
+    end
+    return table.concat(octets,".")
 end
 
 local function get_ipv4_src(p, mask)
