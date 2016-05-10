@@ -122,7 +122,7 @@ function Bucket:add_packet(packet)
 
     -- If we're not violated anymore, finalise sampler and dump
     elseif not self.violated and self.sampler then
-        self.sampler:finish()
+        self.sampler = nil
     end
 
     self.cur_packets = cur_packets
