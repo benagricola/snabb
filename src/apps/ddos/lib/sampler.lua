@@ -79,7 +79,7 @@ local function get_ipv4_proto(p)
 end
 
 local function get_ipv4_src(p)
-    print(rd32(p + o_ipv4_src_addr))
+    print(ntop(rd32(p + o_ipv4_src_addr)))
     return rd32(p + o_ipv4_src_addr)
 end
 
