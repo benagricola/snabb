@@ -179,7 +179,7 @@ function Sample:value(value, count)
         self.top_value = { value, ratio, new_value } -- Value name, ratio compared to total, current value
 
     -- Only reset top value to nil if this is current value and fell below certainty
-    elseif self.top_value[1] == value then
+    elseif self.top_value and self.top_value[1] == value then
         self.top_value = nil
     end
 
