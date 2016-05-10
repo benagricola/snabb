@@ -80,11 +80,11 @@ end
 
 local function get_ipv4_src(p)
     print(rd32(p + o_ipv4_src_addr))
-    return ntop(rd32(p + o_ipv4_src_addr))
+    return rd32(p + o_ipv4_src_addr)
 end
 
 local function get_ipv4_dst(p)
-    return ntop(rd32(p + o_ipv4_dst_addr))
+    return rd32(p + o_ipv4_dst_addr)
 end
 
 local function get_subnet_from_ip(ip)
