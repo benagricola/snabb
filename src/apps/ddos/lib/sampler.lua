@@ -277,7 +277,7 @@ function SampleSet:sample(p)
         local src_ip = get_ipv4_src(e_payload, ip_mask)
         self.src_hosts:value(src_ip)
 
-        local dst_ip = get_ipv4_dst(e_payload)
+        local dst_ip = get_ipv4_dst(e_payload, ip_mask)
         self.dst_hosts:value(dst_ip)
 
         -- Parse src and dst subnets based on a mask
