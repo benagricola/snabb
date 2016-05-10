@@ -83,7 +83,7 @@ local function int_to_dotted(num)
         local octet = num % 256
         num = num - octet
         num = num / 256
-        table.insert(octets,1,octet)
+        table.insert(octets, octet)
     end
     return table.concat(octets,".")
 end
