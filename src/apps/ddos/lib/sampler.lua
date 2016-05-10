@@ -11,7 +11,6 @@ local lwutil        = require("apps.lwaftr.lwutil")
 local counter       = require("core.counter")
 local packet        = require("core.packet")
 local math          = require("math")
-local ipv4          = require("lib.protocol.ipv4")
 local math_exp      = math.exp
 local math_fmod     = math.fmod
 local math_ceil     = math.ceil
@@ -44,7 +43,6 @@ local afi = {
 
 -- /24 as hex mask
 local subnet_mask = 0xFFFFFF00
-local ip_mask = 0xFFFFFFFF
 
 local function get_ethernet_payload(p)
     return p.data + ethernet_header_size
@@ -77,25 +75,16 @@ local function get_ipv4_proto(p)
     return p[o_ipv4_proto]
 end
 
-local function int_to_dotted(num)
-    local octets = {}
-    while num > 0 do
-        local octet = num % 256
-        num = num - octet
-        num = num / 256
-        table.insert(octets, octet)
-    end
-    return table.concat(octets,".")
+local function get_ipv4_src(p)
+    return ntohl(rd32(p + o_ipv4_src_addr))
 end
 
-local function get_ipv4_src(p, mask)
-    local ip = bit_band(rd32(p + o_ipv4_src_addr), mask)
-    return int_to_dotted(ip)
+local function get_ipv4_dst(p)
+    return ntohl(rd32(p + o_ipv4_dst_addr))
 end
 
-local function get_ipv4_dst(p, mask)
-    local ip = bit_band(rd32(p + o_ipv4_dst_addr), mask)
-    return int_to_dotted(ip)
+local function get_subnet_from_ip(ip)
+    return bit_band(ip, subnet_mask)
 end
 
 -- Represents a sample of discrete values, tracking a count for each value and a total.
@@ -212,20 +201,20 @@ function SampleSet:new(cfg)
         min_packet_size    = 0,
         max_packet_size    = 0,
 
-        invalid_ip_version = Sample:new(cfg.invalid_ip_version_certainty or 0.6, 2), -- Limit to 2 discrete values - true and false!
-        invalid_ip_length  = Sample:new(cfg.invalid_ip_length_certainty or 0.6, 2), -- Limit to 2 discrete values - true and false!
+        invalid_ip_version = Sample:new(cfg.invalid_ip_version_certainty or 0.8, 2), -- Limit to 2 discrete values - true and false!
+        invalid_ip_length  = Sample:new(cfg.invalid_ip_length_certainty or 0.8, 2), -- Limit to 2 discrete values - true and false!
         fragment           = 0,
 
-        afi                = Sample:new(cfg.afi_certainty or 0.6, 3), -- Certainty of 0.6, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
-        protocol           = Sample:new(cfg.protocol_certainty or 0.6, 142), -- Currently 142 'known' IP protocols
+        afi                = Sample:new(cfg.afi_certainty or 0.8, 3), -- Certainty of 0.8, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
+        protocol           = Sample:new(cfg.protocol_certainty or 0.8, 142), -- Currently 142 'known' IP protocols
 
-        tcp_flags          = Sample:new(cfg.tcp_flags_certainty or 0.6, 9), -- 9 Possible TCP flags
-        src_hosts          = Sample:new(cfg.src_hosts or 0.6, cfg.src_hosts_limit or 1000), -- Limit to 1000 possible Source IPs
-        src_subnets        = Sample:new(cfg.src_subnets or 0.6, cfg.src_subnets_limit or 100),  -- Limit to 100 possible Source Subnets
-        src_ports          = Sample:new(cfg.src_ports or 0.6, cfg.src_ports_limit or 1000), -- Limit to 1000 possible Source Ports
-        dst_hosts          = Sample:new(cfg.dst_hosts or 0.6, cfg.dst_hosts_limit or 1000), -- Limit to 1000 possible Destination IPs
-        dst_subnets        = Sample:new(cfg.dst_subnets or 0.6, cfg.dst_subnets_limit or 100),  -- Limit to 100 possible Destination Subnets
-        dst_ports          = Sample:new(cfg.dst_ports or 0.6, cfg.dst_ports_limit or 1000), -- Limit to 1000 possible Destination Ports
+        tcp_flags          = Sample:new(cfg.tcp_flags_certainty or 0.8, 9), -- 9 Possible TCP flags
+        src_hosts          = Sample:new(cfg.src_hosts or 0.8, cfg.src_hosts_limit or 1000), -- Limit to 1000 possible Source IPs
+        src_subnets        = Sample:new(cfg.src_subnets or 0.8, cfg.src_subnets_limit or 100),  -- Limit to 100 possible Source Subnets
+        src_ports          = Sample:new(cfg.src_ports or 0.8, cfg.src_ports_limit or 1000), -- Limit to 1000 possible Source Ports
+        dst_hosts          = Sample:new(cfg.dst_hosts or 0.8, cfg.dst_hosts_limit or 1000), -- Limit to 1000 possible Destination IPs
+        dst_subnets        = Sample:new(cfg.dst_subnets or 0.8, cfg.dst_subnets_limit or 100),  -- Limit to 100 possible Destination Subnets
+        dst_ports          = Sample:new(cfg.dst_ports or 0.8, cfg.dst_ports_limit or 1000), -- Limit to 1000 possible Destination Ports
         data               = {},
     }
 
@@ -275,15 +264,15 @@ function SampleSet:sample(p)
         self.protocol:value(tonumber(proto))
 
         -- Parse src and dst addresses
-        local src_ip = get_ipv4_src(e_payload, ip_mask)
+        local src_ip = get_ipv4_src(e_payload)
         self.src_hosts:value(src_ip)
 
-        local dst_ip = get_ipv4_dst(e_payload, ip_mask)
+        local dst_ip = get_ipv4_dst(e_payload)
         self.dst_hosts:value(dst_ip)
 
         -- Parse src and dst subnets based on a mask
-        local src_subnet = get_ipv4_src(e_payload, subnet_mask) .. "/24"
-        local dst_subnet = get_ipv4_dst(e_payload, subnet_mask) .. "/24"
+        local src_subnet = get_subnet_from_ip(src_ip)
+        local dst_subnet = get_subnet_from_ip(dst_ip)
 
         self.src_subnets:value(src_subnet)
         self.dst_subnets:value(dst_subnet)
