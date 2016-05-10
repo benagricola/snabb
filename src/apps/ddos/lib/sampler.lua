@@ -11,6 +11,9 @@ local lwutil        = require("apps.lwaftr.lwutil")
 local counter       = require("core.counter")
 local packet        = require("core.packet")
 local math          = require("math")
+local ipv4          = require("lib.protocol.ipv4")
+local ntop          = ipv4.ntop
+local pton          = ipv4.pton
 local math_exp      = math.exp
 local math_fmod     = math.fmod
 local math_ceil     = math.ceil
@@ -265,17 +268,17 @@ function SampleSet:sample(p)
 
         -- Parse src and dst addresses
         local src_ip = get_ipv4_src(e_payload)
-        self.src_hosts:value(src_ip)
+        self.src_hosts:value(ntop(src_ip))
 
         local dst_ip = get_ipv4_dst(e_payload)
-        self.dst_hosts:value(dst_ip)
+        self.dst_hosts:value(ntop(dst_ip))
 
         -- Parse src and dst subnets based on a mask
         local src_subnet = get_subnet_from_ip(src_ip)
         local dst_subnet = get_subnet_from_ip(dst_ip)
 
-        self.src_subnets:value(src_subnet)
-        self.dst_subnets:value(dst_subnet)
+        self.src_subnets:value(ntop(src_subnet))
+        self.dst_subnets:value(ntop(dst_subnet))
 
     -- elseif ethertype == ethertype_ipv6 then
         --self.afi:value(afi.ipv6)
