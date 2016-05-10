@@ -44,6 +44,7 @@ local afi = {
 
 -- /24 as hex mask
 local subnet_mask = 0xFFFFFF00
+local ip_mask = 0xFFFFFFFF
 
 local function get_ethernet_payload(p)
     return p.data + ethernet_header_size
@@ -76,17 +77,24 @@ local function get_ipv4_proto(p)
     return p[o_ipv4_proto]
 end
 
-local function get_ipv4_src(p)
-    print(ipv4:ntop(p + o_ipv4_src_addr))
-    return rd32(p + o_ipv4_src_addr)
+local function int_to_dotted(ip)
+    local octets = {
+        bit_band(ip, 0x000000FF),
+        bit_band(ip, 0x0000FF00),
+        bit_band(ip, 0x00FF0000),
+        bit_band(ip, 0xFF000000)
+    }
+    return table.concat(octets, ".")
 end
 
-local function get_ipv4_dst(p)
-    return rd32(p + o_ipv4_dst_addr)
+local function get_ipv4_src(p, mask)
+    local ip = bit_band(rd32(p + o_ipv4_src_addr), mask)
+    return int_to_dotted(ip)
 end
 
-local function get_subnet_from_ip(ip)
-    return bit_band(ip, subnet_mask)
+local function get_ipv4_dst(p, mask)
+    local ip = bit_band(rd32(p + o_ipv4_dst_addr), mask)
+    return int_to_dotted(ip)
 end
 
 -- Represents a sample of discrete values, tracking a count for each value and a total.
@@ -266,15 +274,15 @@ function SampleSet:sample(p)
         self.protocol:value(tonumber(proto))
 
         -- Parse src and dst addresses
-        local src_ip = get_ipv4_src(e_payload)
+        local src_ip = get_ipv4_src(e_payload, ip_mask)
         self.src_hosts:value(src_ip)
 
         local dst_ip = get_ipv4_dst(e_payload)
         self.dst_hosts:value(dst_ip)
 
         -- Parse src and dst subnets based on a mask
-        local src_subnet = get_subnet_from_ip(src_ip)
-        local dst_subnet = get_subnet_from_ip(dst_ip)
+        local src_subnet = get_ipv4_src(e_payload, subnet_mask)
+        local dst_subnet = get_ipv4_dst(e_payload, subnet_mask)
 
         self.src_subnets:value(src_subnet)
         self.dst_subnets:value(dst_subnet)
