@@ -79,11 +79,11 @@ local function get_ipv4_proto(p)
 end
 
 local function get_ipv4_src(p)
-    return ntohl(rd32(p + o_ipv4_src_addr))
+    return ntop(rd32(p + o_ipv4_src_addr))
 end
 
 local function get_ipv4_dst(p)
-    return ntohl(rd32(p + o_ipv4_dst_addr))
+    return ntop(rd32(p + o_ipv4_dst_addr))
 end
 
 local function get_subnet_from_ip(ip)
@@ -268,17 +268,17 @@ function SampleSet:sample(p)
 
         -- Parse src and dst addresses
         local src_ip = get_ipv4_src(e_payload)
-        self.src_hosts:value(ntop(src_ip))
+        self.src_hosts:value(src_ip)
 
         local dst_ip = get_ipv4_dst(e_payload)
-        self.dst_hosts:value(ntop(dst_ip))
+        self.dst_hosts:value(dst_ip)
 
         -- Parse src and dst subnets based on a mask
         local src_subnet = get_subnet_from_ip(src_ip)
         local dst_subnet = get_subnet_from_ip(dst_ip)
 
-        self.src_subnets:value(ntop(src_subnet))
-        self.dst_subnets:value(ntop(dst_subnet))
+        self.src_subnets:value(src_subnet)
+        self.dst_subnets:value(dst_subnet)
 
     -- elseif ethertype == ethertype_ipv6 then
         --self.afi:value(afi.ipv6)
