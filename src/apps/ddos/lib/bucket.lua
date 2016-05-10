@@ -108,21 +108,9 @@ function Bucket:add_packet(packet)
     local cur_bits    = self.cur_bits + packet.length
 
     -- If bucket is violated, sample packet based on desired rate
-    if self.violated then
-        -- Create sampler to store this violation if it doesnt already exist
-        if not self.sampler then
-            self.sampler = SampleSet:new({ name = self.name })
-        end
-
-        -- Sample packet if we're ready
-        if math_fmod(cur_packets, sample_rate) == 0 then
-            local sampler = self.sampler
-            sampler:sample(packet)
-        end
-
-    -- If we're not violated anymore, finalise sampler and dump
-    elseif not self.violated and self.sampler then
-        self.sampler = nil
+    if self.violated and math_fmod(cur_packets, sample_rate) == 0 then
+        local sampler = self.sampler
+        sampler:sample(packet)
     end
 
     self.cur_packets = cur_packets
@@ -215,6 +203,11 @@ function Bucket:check_violation(now)
     if violation then
         if not self.violated then
             self.first_violated = now
+
+            -- Create sampler to store this violation if it doesnt already exist
+            if not self.sampler then
+                self.sampler = SampleSet:new({ name = self.name })
+            end
         end
 
         self.violated = violation
@@ -222,6 +215,8 @@ function Bucket:check_violation(now)
     elseif self.violated then
         self.violated = false
         self.first_violated = 0
+        -- Remove sampler
+        self.sampler = nil
     end
 end
 
