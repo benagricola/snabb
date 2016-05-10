@@ -282,8 +282,8 @@ function SampleSet:sample(p)
         self.dst_hosts:value(dst_ip)
 
         -- Parse src and dst subnets based on a mask
-        local src_subnet = get_ipv4_src(e_payload, subnet_mask)
-        local dst_subnet = get_ipv4_dst(e_payload, subnet_mask)
+        local src_subnet = get_ipv4_src(e_payload, subnet_mask) .. "/24"
+        local dst_subnet = get_ipv4_dst(e_payload, subnet_mask) .. "/24"
 
         self.src_subnets:value(src_subnet)
         self.dst_subnets:value(dst_subnet)
