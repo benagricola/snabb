@@ -164,7 +164,9 @@ function Sample:value(value, count)
     -- If over x% (as ratio of 0-1) is a single type, identify that type as our 'current' value
     if ratio >= certainty then
         self.top_value = { value, ratio, new_value } -- Value name, ratio compared to total, current value
-    else
+
+    -- Only reset top value to nil if this is current value and fell below certainty
+    elseif self.top_value[1] == value then
         self.top_value = nil
     end
 
