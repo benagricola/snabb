@@ -212,20 +212,20 @@ function SampleSet:new(cfg)
         min_packet_size    = 0,
         max_packet_size    = 0,
 
-        invalid_ip_version = Sample:new(cfg.invalid_ip_version_certainty or 0.8, 2), -- Limit to 2 discrete values - true and false!
-        invalid_ip_length  = Sample:new(cfg.invalid_ip_length_certainty or 0.8, 2), -- Limit to 2 discrete values - true and false!
+        invalid_ip_version = Sample:new(cfg.invalid_ip_version_certainty or 0.6, 2), -- Limit to 2 discrete values - true and false!
+        invalid_ip_length  = Sample:new(cfg.invalid_ip_length_certainty or 0.6, 2), -- Limit to 2 discrete values - true and false!
         fragment           = 0,
 
-        afi                = Sample:new(cfg.afi_certainty or 0.8, 3), -- Certainty of 0.8, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
-        protocol           = Sample:new(cfg.protocol_certainty or 0.8, 142), -- Currently 142 'known' IP protocols
+        afi                = Sample:new(cfg.afi_certainty or 0.6, 3), -- Certainty of 0.6, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
+        protocol           = Sample:new(cfg.protocol_certainty or 0.6, 142), -- Currently 142 'known' IP protocols
 
-        tcp_flags          = Sample:new(cfg.tcp_flags_certainty or 0.8, 9), -- 9 Possible TCP flags
-        src_hosts          = Sample:new(cfg.src_hosts or 0.8, cfg.src_hosts_limit or 1000), -- Limit to 1000 possible Source IPs
-        src_subnets        = Sample:new(cfg.src_subnets or 0.8, cfg.src_subnets_limit or 100),  -- Limit to 100 possible Source Subnets
-        src_ports          = Sample:new(cfg.src_ports or 0.8, cfg.src_ports_limit or 1000), -- Limit to 1000 possible Source Ports
-        dst_hosts          = Sample:new(cfg.dst_hosts or 0.8, cfg.dst_hosts_limit or 1000), -- Limit to 1000 possible Destination IPs
-        dst_subnets        = Sample:new(cfg.dst_subnets or 0.8, cfg.dst_subnets_limit or 100),  -- Limit to 100 possible Destination Subnets
-        dst_ports          = Sample:new(cfg.dst_ports or 0.8, cfg.dst_ports_limit or 1000), -- Limit to 1000 possible Destination Ports
+        tcp_flags          = Sample:new(cfg.tcp_flags_certainty or 0.6, 9), -- 9 Possible TCP flags
+        src_hosts          = Sample:new(cfg.src_hosts or 0.6, cfg.src_hosts_limit or 1000), -- Limit to 1000 possible Source IPs
+        src_subnets        = Sample:new(cfg.src_subnets or 0.6, cfg.src_subnets_limit or 100),  -- Limit to 100 possible Source Subnets
+        src_ports          = Sample:new(cfg.src_ports or 0.6, cfg.src_ports_limit or 1000), -- Limit to 1000 possible Source Ports
+        dst_hosts          = Sample:new(cfg.dst_hosts or 0.6, cfg.dst_hosts_limit or 1000), -- Limit to 1000 possible Destination IPs
+        dst_subnets        = Sample:new(cfg.dst_subnets or 0.6, cfg.dst_subnets_limit or 100),  -- Limit to 100 possible Destination Subnets
+        dst_ports          = Sample:new(cfg.dst_ports or 0.6, cfg.dst_ports_limit or 1000), -- Limit to 1000 possible Destination Ports
         data               = {},
     }
 
