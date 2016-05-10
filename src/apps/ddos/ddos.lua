@@ -14,6 +14,8 @@ local ffi           = require("ffi")
 local link          = require("core.link")
 local link_receive  = link.receive
 local link_empty    = link.empty
+local io            = require("io")
+local io_open       = io.open
 local packet        = require("core.packet")
 local packet_free   = packet.free
 local json          = require("lib.json")
@@ -65,9 +67,6 @@ function Detector:new (arg)
         self:parse_config(conf)
     end
 
-    -- datagram object for reuse
-    -- self.d = datagram:new()
-
     return self
 end
 
@@ -79,6 +78,7 @@ function Detector:write_status()
     -- Write file and then rename into new file
     local status_file = assert(io.open(status_temp_path, "w"))
     status_file:write(m_pack(self.buckets:get_buckets()))
+    status_file:flush()
     status_file:close()
 
     -- Rename new file
@@ -187,8 +187,6 @@ function Detector:process_packet(i)
 
     -- Parse packet
     local p          = link_receive(i)
-
-    -- local d = self.d:new(p, ethernet, {delayed_commit = true})
 
     -- Check packet against BPF rules
     local bucket_id = classifier:match(p)

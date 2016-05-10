@@ -100,6 +100,7 @@ function Sample:new(certainty, limit)
     local self = {
         certainty   = certainty,
         limit       = limit or 100, -- Default to 100 discrete values per sample
+        value_count = 0,
         values      = {},
         value_names = {},
         top_value   = nil,
@@ -121,11 +122,13 @@ function Sample:value(value, count)
 
     local value_names = self.value_names
     local values = self.values
-    local val_length = #values + 1
+
+    local certainty = self.certainty
 
     local val_index
 
     if not value_names[value] then
+        local val_length = #values + 1
 
         -- Do not create more unique values if we're already tracking more than 'limit' discrete values
         if val_length > self.limit then
@@ -135,6 +138,7 @@ function Sample:value(value, count)
 
         value_names[value] = val_length
         val_index = val_length
+        self.value_count = val_length
     else
         val_index = value_names[value]
     end
@@ -147,7 +151,7 @@ function Sample:value(value, count)
     local ratio = new_value / self.total
 
     -- If over x% (as ratio of 0-1) is a single type, identify that type as our 'current' value
-    if ratio >= self.certainty then
+    if ratio >= certainty then
         self.top_value = { value, ratio, new_value } -- Value name, ratio compared to total, current value
     else
         self.top_value = nil
@@ -185,29 +189,31 @@ SampleSet = {}
 
 function SampleSet:new(cfg)
     local self = {
+        name               = cfg.name or "Unknown Sample Set",
         started            = app_now(),
         finished           = 0,
         sampled_packets    = 0, -- Note - this is total packets *sampled*, multiply by sample rate for approximate total packet count
         sampled_bits       = 0, -- Note - this is total bits *sampled*, multiply by sample rate for approximate total bit count
 
+        subnet_mask        = subnet_mask, -- Store subnet mask for use by consuming applications
         avg_packet_size    = 0,
         min_packet_size    = 0,
         max_packet_size    = 0,
 
-        invalid_ip_version = Sample:new(0.8, 2), -- Limit to 2 discrete values - true and false!
-        invalid_ip_length  = Sample:new(0.8, 2), -- Limit to 2 discrete values - true and false!
+        invalid_ip_version = Sample:new(cfg.invalid_ip_version_certainty or 0.8, 2), -- Limit to 2 discrete values - true and false!
+        invalid_ip_length  = Sample:new(cfg.invalid_ip_length_certainty or 0.8, 2), -- Limit to 2 discrete values - true and false!
         fragment           = 0,
 
-        afi                = Sample:new(0.8, 3), -- Certainty of 0.8, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
-        protocol           = Sample:new(0.8, 142), -- Currently 142 'known' IP protocols
+        afi                = Sample:new(cfg.afi_certainty or 0.8, 3), -- Certainty of 0.8, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
+        protocol           = Sample:new(cfg.protocol_certainty or 0.8, 142), -- Currently 142 'known' IP protocols
 
-        tcp_flags          = Sample:new(0.8, 9), -- 9 Possible TCP flags
-        src_hosts          = Sample:new(0.8, 1000), -- Limit to 1000 possible Source IPs
-        src_subnets        = Sample:new(0.8, 100),  -- Limit to 100 possible Source Subnets
-        src_ports          = Sample:new(0.8, 1000), -- Limit to 1000 possible Source Ports
-        dst_hosts          = Sample:new(0.8, 1000), -- Limit to 1000 possible Destination IPs
-        dst_subnets        = Sample:new(0.8, 100),  -- Limit to 100 possible Destination Subnets
-        dst_ports          = Sample:new(0.8, 1000), -- Limit to 1000 possible Destination Ports
+        tcp_flags          = Sample:new(cfg.tcp_flags_certainty or 0.8, 9), -- 9 Possible TCP flags
+        src_hosts          = Sample:new(cfg.src_hosts or 0.8, cfg.src_hosts_limit or 1000), -- Limit to 1000 possible Source IPs
+        src_subnets        = Sample:new(cfg.src_subnets or 0.8, cfg.src_subnets_limit or 100),  -- Limit to 100 possible Source Subnets
+        src_ports          = Sample:new(cfg.src_ports or 0.8, cfg.src_ports_limit or 1000), -- Limit to 1000 possible Source Ports
+        dst_hosts          = Sample:new(cfg.dst_hosts or 0.8, cfg.dst_hosts_limit or 1000), -- Limit to 1000 possible Destination IPs
+        dst_subnets        = Sample:new(cfg.dst_subnets or 0.8, cfg.dst_subnets_limit or 100),  -- Limit to 100 possible Destination Subnets
+        dst_ports          = Sample:new(cfg.dst_ports or 0.8, cfg.dst_ports_limit or 1000), -- Limit to 1000 possible Destination Ports
         data               = {},
     }
 
@@ -286,4 +292,8 @@ end
 
 function SampleSet:status()
     log_debug("SampleSet Status")
+end
+
+function SampleSet:finish()
+    self.finished = app_now()
 end

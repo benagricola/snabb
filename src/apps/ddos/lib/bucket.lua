@@ -52,7 +52,6 @@ function Bucket:new(cfg)
         pps_rate       = cfg.pps_rate,
         bps_rate       = cfg.bps_rate,
         sample_rate    = cfg.sample_rate or 1000, -- Sample every 100 packets when violated
-        max_captured   = cfg.max_captured or 5000, -- Capture 5000 packets when violated (and sampled)
         counters       = {
             pps           = open_counter(cfg.name, 'pps'),
             bps           = open_counter(cfg.name, 'bps'),
@@ -112,10 +111,14 @@ function Bucket:add_packet(packet)
     if self.violated and math_fmod(cur_packets, sample_rate) == 0 then
         -- Create new sampler if it doesnt exist
         if not self.sampler then
-            self.sampler = SampleSet:new(self.name)
+            self.sampler = SampleSet:new({ name = self.name })
         end
         local sampler = self.sampler
         sampler:sample(packet)
+
+    -- If we're not violated anymore, finalise sampler and dump
+    elseif not self.violated and self.sampler then
+        self.sampler:finish()
     end
 
     self.cur_packets = cur_packets
