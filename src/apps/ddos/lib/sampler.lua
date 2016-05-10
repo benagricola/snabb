@@ -78,11 +78,12 @@ local function get_ipv4_proto(p)
 end
 
 local function int_to_dotted(num)
+    local octets = {}
     while num > 0 do
         local octet = num % 256
         num = num - octet
         num = num / 256
-        table_insert(octets,1,octet)
+        table.insert(octets,1,octet)
     end
     return table.concat(octets,".")
 end
