@@ -35,6 +35,19 @@ local o_ipv4_src_addr      = constants.o_ipv4_src_addr
 local o_ipv4_dst_addr      = constants.o_ipv4_dst_addr
 local ethernet_header_size = constants.ethernet_header_size
 
+local protocols = {
+    [1]  = "icmp",
+    [2]  = "igmp",
+    [6]  = "tcp",
+    [17] = "udp",
+    [47] = "gre",
+    [50] = "esp",
+    [51] = "ah",
+    [88] = "eigrp",
+    [89] = "ospf",
+    [124] = "isis",
+    [132] = "sctp",
+}
 
 local afi = {
     ipv4    = 'ipv4',
@@ -274,7 +287,7 @@ function SampleSet:sample(p)
 
         -- Parse IPv4 Protocol
         local proto = get_ipv4_proto(e_payload)
-        self.protocol:value(tonumber(proto))
+        self.protocol:value(protocols[tonumber(proto)] or 'unknown')
 
         -- Parse src and dst addresses
         local src_ip = get_ipv4_src(e_payload, ip_mask)
