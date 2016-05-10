@@ -12,8 +12,6 @@ local counter       = require("core.counter")
 local packet        = require("core.packet")
 local math          = require("math")
 local ipv4          = require("lib.protocol.ipv4")
-local ntop          = ipv4.ntop
-local pton          = ipv4.pton
 local math_exp      = math.exp
 local math_fmod     = math.fmod
 local math_ceil     = math.ceil
@@ -79,7 +77,7 @@ local function get_ipv4_proto(p)
 end
 
 local function get_ipv4_src(p)
-    print(ntop(rd32(p + o_ipv4_src_addr)))
+    print(ipv4:ntop(rd32(p + o_ipv4_src_addr)))
     return rd32(p + o_ipv4_src_addr)
 end
 
