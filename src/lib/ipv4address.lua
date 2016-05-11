@@ -19,14 +19,14 @@ local C = ffi.C
 
 local ipv4 = require("lib.protocol.ipv4")
 
-local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; }')
+local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; uint32_t mask; }')
 local ipv4_addr_mt = {}
 local uchar_ptr_t = ffi.typeof('unsigned char *')
 
 -- Pre-calculate masks
 local bin_masks = {}
 for i=1,32 do
-    bin_masks[i] = bit_lshift(bit_tobit((2^i)-1), 32-i)
+    bin_masks[i] = bit_lshift(bit_tobit((2^i)-1), i)
 end
 
 local bin_inverted_masks = {}
@@ -36,7 +36,7 @@ end
 
 ipv4_addr_mt.__index = ipv4_addr_mt
 
-function ipv4_addr_mt:new (addr)
+function ipv4_addr_mt:new (addr, mask)
    -- If initialising with struct, return
    if ffi_istype(ipv4_addr_t, addr) then
       return addr
@@ -44,6 +44,9 @@ function ipv4_addr_mt:new (addr)
 
    -- Otherwise create new instance
    local ipv4_addr = ipv4_addr_t()
+
+   -- Set mask if given, or default to /32 (single IP)
+   ipv4_addr.mask = mask or 32
 
    -- If initialising with uchar_ptr_t, assume IP in raw form in packet
    if ffi_istype(uchar_ptr_t, addr) then
@@ -63,19 +66,25 @@ function ipv4_addr_mt:mask(mask)
         return false
     end
 
-    self.addr = bit_band(bin_inverted_masks[mask], self.addr)
+    self.mask = mask
     return true
 end
 
 
 function ipv4_addr_mt:__tostring ()
    local ip = self.addr
+   local mask = self.mask
+   local masked = bit_band(ip, bin_masks[mask])
    local n1 = bit_band(bit_rshift(ip, 0),  0x000000FF)
    local n2 = bit_band(bit_rshift(ip, 8),  0x000000FF)
    local n3 = bit_band(bit_rshift(ip, 16), 0x000000FF)
    local n4 = bit_band(bit_rshift(ip, 24), 0x000000FF)
 
-   return string_format("%d.%d.%d.%d", n1, n2, n3, n4)
+   if mask == 32 then
+      return string_format("%d.%d.%d.%d", n1, n2, n3, n4)
+   else
+      return string_format("%d.%d.%d.%d/%d", n1, n2, n3, n4, mask)
+   end
 end
 
 function ipv4_addr_mt.__eq (a, b)
