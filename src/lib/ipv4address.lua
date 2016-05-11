@@ -61,7 +61,7 @@ function ipv4_addr_mt:new (addr, mask)
 end
 
 
-function ipv4_addr_mt:mask(mask)
+function ipv4_addr_mt:set_mask(mask)
     if mask < 1 or mask > 32 then
         return false
     end

@@ -101,7 +101,7 @@ local function get_ipv4_src(p, mask)
     local ip = ip_addr:new(p + o_ipv4_src_addr)
 
     if mask then
-        ip:mask(mask)
+        ip:set_mask(mask)
     end
 
     return tostring(ip)
@@ -110,7 +110,7 @@ end
 local function get_ipv4_dst(p, mask)
     local ip = ip_addr:new(p + o_ipv4_dst_addr)
     if mask then
-        ip:mask(mask)
+        ip:set_mask(mask)
     end
     return tostring(ip)
 end
