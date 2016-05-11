@@ -56,7 +56,7 @@ local afi = {
 }
 
 -- /24 as hex mask
-local subnet_mask = 0xFFFFFF00
+local subnet_mask = 0x00FFFFFF
 local ip_mask = 0xFFFFFFFF
 
 local function get_ethernet_payload(p)
