@@ -29,7 +29,6 @@ local ffi_typeof    = ffi.typeof
 
 local rd16, wr16, rd32, wr32 = lwutil.rd16, lwutil.wr16, lwutil.rd32, lwutil.wr32
 local ntohs, ntohl = lwutil.htons, lwutil.htonl
-local ntop, pton = ipv4.ntop, ipv4.pton
 
 local n_ethertype_ipv4     = constants.n_ethertype_ipv4
 local n_ethertype_ipv6     = constants.n_ethertype_ipv6
