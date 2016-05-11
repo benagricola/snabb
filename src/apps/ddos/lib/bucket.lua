@@ -207,6 +207,7 @@ function Bucket:check_violation(now)
 
             -- Create sampler to store this violation if it doesnt already exist
             if not self.sampler then
+                log_info("New Sampler")
                 self.sampler = SampleSet:new({ name = self.name })
             end
         end
