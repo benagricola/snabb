@@ -21,9 +21,12 @@ local C = ffi.C
 
 local ntohs, htons, ntohl, htonl = lib.ntohs, lib.htons, lib.ntohl, lib.htonl
 
-local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; int8_t mask; }')
-local ipv4_addr_mt = { }
 local uchar_ptr_t = ffi.typeof('unsigned char *')
+
+local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; int8_t mask; }')
+local ipv4_addr_mt = {}
+ipv4_addr_mt.__index = ipv4_addr_mt
+
 
 -- Pre-calculate masks
 local bin_masks = {}
@@ -35,6 +38,7 @@ local bin_inverted_masks = {}
 for i=1,32 do
     bin_inverted_masks[i] = bit_bxor(bin_masks[i], bin_masks[32])
 end
+
 
 function ipv4_addr_mt:new (addr, mask)
    -- If initialising with struct, return
