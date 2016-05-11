@@ -23,7 +23,7 @@ function ipv4_addr_mt:new (addr)
    -- If initialising with uchar_ptr_t, assume IP in raw form in packet
    -- Copy value into struct
    if ffi.istype(uchar_ptr_t, addr) then
-      local addr_u32 = ffi.cast("uint32_t*", addr)
+      local addr_u32 = ffi.cast("uint32_t", addr)
       ipv4_addr.addr = addr_u32
       return ipv4_addr
    end
