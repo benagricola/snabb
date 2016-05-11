@@ -4,7 +4,7 @@ local bit_band   = bit.band
 local bit_rshift = bit.rshift
 local bit_lshift = bit.lshift
 local bit_tobit  = bit.tobit
-local bit_xor    = bit.xor
+local bit_bxor   = bit.bxor
 
 local string = require("string")
 local string_format = string.format
@@ -31,7 +31,7 @@ end
 
 local bin_inverted_masks = {}
 for i=1,32 do
-    bin_inverted_masks[i] = bit_xor(bin_masks[i], bin_masks[32])
+    bin_inverted_masks[i] = bit_bxor(bin_masks[i], bin_masks[32])
 end
 
 ipv4_addr_mt.__index = ipv4_addr_mt
