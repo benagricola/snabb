@@ -63,8 +63,8 @@ local afi = {
 }
 
 -- /24 as hex mask
-local subnet_mask = 0x00FFFFFF
-local ip_mask = 0xFFFFFFFF
+local subnet_mask = 24
+local ip_mask = 32
 
 local function get_ethernet_payload(p)
     return p.data + ethernet_header_size
@@ -99,11 +99,19 @@ end
 
 local function get_ipv4_src(p, mask)
     local ip = ip_addr:new(p + o_ipv4_src_addr)
+
+    if mask then
+        ip:mask(mask)
+    end
+
     return tostring(ip)
 end
 
 local function get_ipv4_dst(p, mask)
     local ip = ip_addr:new(p + o_ipv4_dst_addr)
+    if mask then
+        ip:mask(mask)
+    end
     return tostring(ip)
 end
 
