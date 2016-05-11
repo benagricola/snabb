@@ -108,7 +108,7 @@ local function int_to_dotted(num)
 end
 
 local function get_ipv4(offset, mask)
-    local in_addr  = ffi.new("uint8_t[4]")
+    local in_addr  = ffi.new("uint32_t")
     ffi_copy(in_addr, offset, 4)
     in_addr = bit_band(in_addr, mask)
     return in_addr
