@@ -33,6 +33,7 @@ local ntohs, ntohl = lwutil.htons, lwutil.htonl
 local n_ethertype_ipv4     = constants.n_ethertype_ipv4
 local n_ethertype_ipv6     = constants.n_ethertype_ipv6
 local o_ethernet_ethertype = constants.o_ethernet_ethertype
+local o_ipv4_flags         = constants.o_ipv4_flags
 local o_ipv4_ver_and_ihl   = constants.o_ipv4_ver_and_ihl
 local o_ipv4_proto         = constants.o_ipv4_proto
 local o_ipv4_total_length  = constants.o_ipv4_total_length
@@ -40,19 +41,26 @@ local o_ipv4_src_addr      = constants.o_ipv4_src_addr
 local o_ipv4_dst_addr      = constants.o_ipv4_dst_addr
 local ethernet_header_size = constants.ethernet_header_size
 
-local protocols = {
-    [1]  = "icmp",
-    [2]  = "igmp",
-    [6]  = "tcp",
-    [17] = "udp",
-    [47] = "gre",
-    [50] = "esp",
-    [51] = "ah",
-    [88] = "eigrp",
-    [89] = "ospf",
-    [124] = "isis",
-    [132] = "sctp",
+local proto_names = {
+    ICMP  = 1,
+    IGMP  = 2,
+    IPV4  = 4,
+    TCP   = 6,
+    UDP   = 17,
+    GRE   = 47,
+    ESP   = 50,
+    AH    = 51,
+    EIGRP = 88,
+    OSPF  = 89,
+    ISIS  = 124,
+    SCTP  = 132,
 }
+
+-- Calculate reverse mapping of above
+local proto_nums = {}
+for proto_name, proto_num in pairs(proto_names) do
+    proto_nums[proto_num] = proto_name
+end
 
 local afi = {
     ipv4    = 'ipv4',
@@ -126,6 +134,10 @@ end
 local function get_ipv4_dst_port(p)
    -- Assumes that the packet looks like TCP or UDP.
    return ntohs(rd16(p + 2))
+end
+
+local function get_ipv4_flags(p)
+   return p[o_ipv4_flags]
 end
 
 
@@ -248,7 +260,8 @@ function SampleSet:new(cfg)
 
         invalid_ip_version = Sample:new(cfg.invalid_ip_version_certainty or 0.6, 2), -- Limit to 2 discrete values - true and false!
         invalid_ip_length  = Sample:new(cfg.invalid_ip_length_certainty or 0.6, 2), -- Limit to 2 discrete values - true and false!
-        fragment           = 0,
+        dont_fragment      = Sample:new(cfg.dont_fragment_certainty or 0.6, 2), -- Limit to 2 discrete values - true and false!
+        is_fragment        = Sample:new(cfg.is_fragment_certainty or 0.6, 2), -- Limit to 2 discrete values - true and false!
 
         afi                = Sample:new(cfg.afi_certainty or 0.6, 3), -- Certainty of 0.6, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
         protocol           = Sample:new(cfg.protocol_certainty or 0.6, 142), -- Currently 142 'known' IP protocols
@@ -292,6 +305,7 @@ function SampleSet:sample(p)
     local valid_ip_version = false
     local valid_ip_length  = false
 
+    local proto
     -- If IPv4 packet, parse as such
     if ethertype == n_ethertype_ipv4 then
         self.afi:value(afi.ipv4) -- Add '1' to incidence of ipv4 traffic
@@ -304,9 +318,21 @@ function SampleSet:sample(p)
         local expected_length = get_ipv4_total_length(e_payload)
         valid_ip_length = (expected_length + ethernet_header_size) ~= received_length and received_length > 60
 
+        -- Parse IPv4 Flags
+        local flags = get_ipv4_flags(e_payload)
+
+        -- Mask off bit 7 for DF
+        local df_set = bit_band(flags, 0x40) == 0x40
+        self.dont_fragment:value(df_set)
+
+        -- Mask off bit 6 for MF
+        local mf_set = bit_band(flags, 0x20) == 0x20
+        self.is_fragment:value(mf_set)
+
+
         -- Parse IPv4 Protocol
-        local proto = get_ipv4_proto(e_payload)
-        self.protocol:value(protocols[tonumber(proto)] or 'unknown')
+        proto = get_ipv4_proto(e_payload)
+        self.protocol:value((proto_nums[tonumber(proto)] or 'unknown'):lower())
 
         -- Parse src and dst addresses
         local src_ip = get_ipv4_src(e_payload, ip_mask)
@@ -338,6 +364,11 @@ function SampleSet:sample(p)
     else
         self.afi:value(afi.invalid)
         log_error("Attempted to sample packet with unsupported ethertype %d", tonumber(ethertype))
+    end
+
+    -- Protocols could be encapsulated in both IPv4 and 6 (and others)
+    if proto == proto_names.TCP then
+        -- Get TCP Flags
     end
 
     self.invalid_ip_length:value(valid_ip_length)
