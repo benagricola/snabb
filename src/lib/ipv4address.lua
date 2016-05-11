@@ -50,7 +50,7 @@ function ipv4_addr_mt:new (addr, mask)
 
    -- If initialising with uchar_ptr_t, assume IP in raw form in packet
    if ffi_istype(uchar_ptr_t, addr) then
-      ipv4_addr.addr = ffi_cast("uint32_t", addr)
+      ipv4_addr.addr = ffi_cast("uint32_t*", addr)[0]
 
    -- If initialising with string, assume dotted notation IP address
    else
