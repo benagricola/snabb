@@ -7,7 +7,7 @@ local ipv4 = require("lib.protocol.ipv4")
 
 local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; }')
 local ipv4_addr_mt = {}
-local void_ptr_t = ffi.typeof('void*')
+local uchar_ptr_t = ffi.typeof('unsigned char *')
 
 ipv4_addr_mt.__index = ipv4_addr_mt
 
@@ -20,9 +20,9 @@ function ipv4_addr_mt:new (addr)
    -- Otherwise create new instance of struct
    local ipv4_addr = ipv4_addr_t()
 
-   -- If initialising with pointer to uint32, assume IP in raw form in packet
+   -- If initialising with uchar_ptr_t, assume IP in raw form in packet
    -- Copy value into struct
-   if ffi.istype(void_ptr_t, addr) then
+   if ffi.istype(uchar_ptr_t, addr) then
       ffi.copy(ipv4_addr.addr, addr)
       return ipv4_addr
    end
