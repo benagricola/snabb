@@ -26,7 +26,7 @@ local uchar_ptr_t = ffi.typeof('unsigned char *')
 -- Pre-calculate masks
 local bin_masks = {}
 for i=1,32 do
-    bin_masks[32-i] = bit_lshift(bit_tobit((2^i)-1), 32-i)
+    bin_masks[33-i] = bit_lshift(bit_tobit((2^i)-1), 32-i)
 end
 
 local bin_inverted_masks = {}
