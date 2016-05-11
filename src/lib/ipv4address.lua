@@ -19,7 +19,7 @@ local C = ffi.C
 
 local ipv4 = require("lib.protocol.ipv4")
 
-local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; uint32_t mask; }')
+local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; uint8_t mask; }')
 local ipv4_addr_mt = {}
 local uchar_ptr_t = ffi.typeof('unsigned char *')
 
@@ -74,7 +74,7 @@ end
 function ipv4_addr_mt:__tostring ()
    local ip = self.addr
    local mask = self.mask
-   local masked = bit_band(ip, bin_masks[mask])
+   local masked = bit_band(bin_masks[mask], ip)
    local n1 = bit_band(bit_rshift(ip, 0),  0x000000FF)
    local n2 = bit_band(bit_rshift(ip, 8),  0x000000FF)
    local n3 = bit_band(bit_rshift(ip, 16), 0x000000FF)
