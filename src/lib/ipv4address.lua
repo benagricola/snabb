@@ -21,7 +21,7 @@ local C = ffi.C
 
 local ntohs, htons, ntohl, htonl = lib.ntohs, lib.htons, lib.ntohl, lib.htonl
 
-local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; uint8_t mask; }')
+local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; }')
 local ipv4_addr_mt = {}
 local uchar_ptr_t = ffi.typeof('unsigned char *')
 
@@ -48,7 +48,7 @@ function ipv4_addr_mt:new (addr, mask)
    local ipv4_addr = ipv4_addr_t()
 
    -- Set mask if given, or default to /32 (single IP)
-   ipv4_addr.mask = mask or 32
+   self.mask = mask or 32
 
    -- If initialising with uchar_ptr_t, assume IP in raw form in packet
    if ffi_istype(uchar_ptr_t, addr) then
@@ -89,18 +89,17 @@ function ipv4_addr_mt:__tostring ()
    end
 end
 
+function ipv4_addr_mt.is_inside (b)
+
+end
+
 function ipv4_addr_mt.__eq (a, b)
+   -- Looks for exactly matching IP addresses
    return a.addr == b.addr
 end
 
-function ipv4_addr_mt:top()
-   local p = ffi_new("char[?]", 16)
-   local c_str = C.inet_ntop(2, self.addr, p, 16)
-   return ffi_string(c_str)
-end
-
 function ipv4_addr_mt:ton()
-    return self.addr
+    return htonl(self.addr)
 end
 
 ipv4_addr_t = ffi.metatype(ipv4_addr_t, ipv4_addr_mt)

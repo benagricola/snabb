@@ -6,8 +6,24 @@ local C = ffi.C
 local lib = require("core.lib")
 local header = require("lib.protocol.header")
 local ipsum = require("lib.checksum").ipsum
+local bit = require("bit")
+
+local bit_tobit, bit_lshift, bit_rshift, bit_bxor =
+   bit.tobit, bit.lshift, bit.rshift, bit.bxor
+
 local htons, ntohs, htonl, ntohl =
    lib.htons, lib.ntohs, lib.htonl, lib.ntohl
+
+-- Pre-calculate valid subnet masks
+local bin_masks = {}
+for i=1,32 do
+   bin_masks[i] = bit_lshift(bit_tobit((2^i)-1), 32-i)
+end
+
+local bin_inverted_masks = {}
+for i=1,32 do
+   bin_inverted_masks[i] = bit_bxor(bin_masks[i], bin_masks[32])
+end
 
 -- TODO: generalize
 local AF_INET = 2
@@ -23,8 +39,12 @@ local ipv4hdr_pseudo_t = ffi.typeof[[
       } __attribute__((packed))
 ]]
 
-local ipv4_addr_t = ffi.typeof("uint8_t[4]")
+-- IPv4 Address Type
+local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; uint8_t mask; }')
 local ipv4_addr_t_size = ffi.sizeof(ipv4_addr_t)
+local ipv4_addr_mt = { __index = ipv4_addr_mt }
+local uchar_ptr_t = ffi.typeof('unsigned char *')
+
 local ipv4 = subClass(header)
 
 -- Class variables

@@ -11,7 +11,6 @@ local lwutil        = require("apps.lwaftr.lwutil")
 local counter       = require("core.counter")
 local packet        = require("core.packet")
 local math          = require("math")
-local ipv4          = require("lib.protocol.ipv4")
 local math          = require("math")
 local math_exp      = math.exp
 local math_fmod     = math.fmod
