@@ -1,7 +1,10 @@
 --- IPv4 address handling object.
-local bit = require("bit")
-local bit_band = bit.band
+local bit        = require("bit")
+local bit_band   = bit.band
 local bit_rshift = bit.rshift
+local bit_lshift = bit.lshift
+local bit_tobit  = bit.tobit
+local bit_xor    = bit.xor
 
 local string = require("string")
 local string_format = string.format
