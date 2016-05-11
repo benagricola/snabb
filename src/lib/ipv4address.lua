@@ -35,7 +35,7 @@ function ipv4_addr_mt:new (addr)
 end
 
 function ipv4_addr_mt:__tostring ()
-   local ip = self.addr[0]
+   local ip = self.addr
    local n1 = bit.band(bit.rshift(ip, 0),  0x000000FF)
    local n2 = bit.band(bit.rshift(ip, 8),  0x000000FF)
    local n3 = bit.band(bit.rshift(ip, 16), 0x000000FF)
