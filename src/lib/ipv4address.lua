@@ -22,7 +22,7 @@ local C = ffi.C
 local ntohs, htons, ntohl, htonl = lib.ntohs, lib.htons, lib.ntohl, lib.htonl
 
 local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; int8_t mask; }')
-local ipv4_addr_mt = { __index = ipv4_addr_mt }
+local ipv4_addr_mt = { }
 local uchar_ptr_t = ffi.typeof('unsigned char *')
 
 -- Pre-calculate masks
