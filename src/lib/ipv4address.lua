@@ -12,18 +12,19 @@ local string = require("string")
 local string_format = string.format
 
 local ffi = require("ffi")
-local ffi_new = ffi.new
+local ffi_new    = ffi.new
 local ffi_istype = ffi.istype
-local ffi_cast = ffi.cast
+local ffi_typeof = ffi.typeof
+local ffi_cast   = ffi.cast
 local ffi_string = ffi.string
 
 local C = ffi.C
 
 local ntohs, htons, ntohl, htonl = lib.ntohs, lib.htons, lib.ntohl, lib.htonl
 
-local uchar_ptr_t = ffi.typeof('unsigned char *')
+local uchar_ptr_t = ffi_typeof('unsigned char *')
 
-local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; int8_t mask; }')
+local ipv4_addr_t = ffi_typeof('struct { uint32_t addr; int8_t mask; }')
 local ipv4_addr_mt = {}
 ipv4_addr_mt.__index = ipv4_addr_mt
 
@@ -66,12 +67,12 @@ end
 
 
 function ipv4_addr_mt:set_mask(mask)
-    if mask < 1 or mask > 32 then
-        return false
-    end
+   if mask < 1 or mask > 32 then
+      return false
+   end
 
-    self.mask = mask
-    return true
+   self.mask = mask
+   return true
 end
 
 
@@ -91,18 +92,22 @@ function ipv4_addr_mt:__tostring ()
    end
 end
 
+
 function ipv4_addr_mt.is_inside (b)
 
 end
+
 
 function ipv4_addr_mt.__eq (a, b)
    -- Looks for exactly matching IP addresses
    return a.addr == b.addr
 end
 
+
 function ipv4_addr_mt:ton()
     return htonl(self.addr)
 end
+
 
 ipv4_addr_t = ffi.metatype(ipv4_addr_t, ipv4_addr_mt)
 

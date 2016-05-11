@@ -11,6 +11,7 @@ local log_error     = log.error
 local log_critical  = log.critical
 local log_debug     = log.debug
 local ffi           = require("ffi")
+local ffi_istype    = ffi.istype
 local link          = require("core.link")
 local link_receive  = link.receive
 local link_empty    = link.empty
@@ -28,10 +29,12 @@ local classifier = require("apps.ddos.classifiers.pflua")
 local buckets    = require("apps.ddos.lib.buckets")
 
 
+local struct_counter_t = ffi_typeof('struct counter')
+
 -- Msgpack Monkeypatch to auto-encode cdata counters as an unsigned integer
 msgpack.packers['cdata'] = function (buffer, data)
     -- If cdata is a counter, conver to number and encode unsigned
-    if ffi.istype("struct counter", data) then
+    if ffi_istype(struct_counter_t, data) then
         local num = tonumber(data.c)
         msgpack.packers['unsigned'](buffer, num)
     end

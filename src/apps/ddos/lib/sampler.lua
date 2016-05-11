@@ -113,6 +113,23 @@ local function get_ipv4_dst(p, mask)
     return tostring(ip)
 end
 
+local function get_ipv4_payload(p)
+    local ihl = get_ipv4_ihl(p)
+    return p + ihl
+end
+
+local function get_ipv4_src_port(p)
+   -- Assumes that the packet looks like TCP or UDP.
+   return ntohs(rd16(p))
+end
+
+local function get_ipv4_dst_port(p)
+   -- Assumes that the packet looks like TCP or UDP.
+   return ntohs(rd16(p + 2))
+end
+
+
+
 -- Represents a sample of discrete values, tracking a count for each value and a total.
 -- Limits to the number of discrete values can be added
 local Sample = {}
@@ -304,6 +321,16 @@ function SampleSet:sample(p)
 
         self.src_subnets:value(src_subnet)
         self.dst_subnets:value(dst_subnet)
+
+        -- Get IPv4 payload
+        local ipv4_payload = get_ipv4_payload(e_payload)
+
+        -- Parse src and dst ports
+        local src_port = get_ipv4_src_port(ipv4_payload)
+        local dst_port = get_ipv4_dst_port(ipv4_payload)
+
+        self.src_ports:value(src_port)
+        self.dst_ports:value(dst_port)
 
     -- elseif ethertype == ethertype_ipv6 then
         --self.afi:value(afi.ipv6)
