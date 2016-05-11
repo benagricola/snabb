@@ -27,6 +27,7 @@ function ipv4_addr_mt:new (addr)
       return ipv4_addr
    end
 
+   print(addr)
    -- If initialising with string, assume dotted notation IP address
    ipv4_addr.addr = ipv4:pton(addr)
    return ipv4_addr
