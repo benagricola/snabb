@@ -108,7 +108,7 @@ local function int_to_dotted(num)
 end
 
 local function get_ipv4(offset, mask)
-    local in_addr = ffi_cast('int32_t', offset)
+    local in_addr = ffi_cast('int32_t*', offset)
     in_addr = bit_band(in_addr, mask)
     return in_addr
 end
