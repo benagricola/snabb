@@ -44,8 +44,8 @@ end
 
 function Bucket:new(cfg)
     local self = {
-        name = cfg.name,
-        cfg  = cfg,
+        name    = cfg.name,
+        filter  = cfg.filter,
         period         = cfg.period or 1,  -- Buckets are 5s long
         average_period = cfg.avg_period or 30, -- EWMA is calculated over 30s
         pps_burst_rate = cfg.pps_burst_rate,
