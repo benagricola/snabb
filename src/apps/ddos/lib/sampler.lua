@@ -209,9 +209,11 @@ function Sample:value(value, count)
     if ratio >= certainty then
         self.top_value = { value, ratio, new_value } -- Value name, ratio compared to total, current value
 
-    -- Only reset top value to nil if this is current value and fell below certainty
-    elseif self.top_value and self.top_value[1] == value then
-        self.top_value = nil
+    -- If top value is no longer certain, then reset
+    elseif self.top_value then
+        if iself.top_value[3] / self.total < certainty then
+            self.top_value = nil
+        end
     end
 
     return true
@@ -369,6 +371,8 @@ function SampleSet:sample(p)
     -- Protocols could be encapsulated in both IPv4 and 6 (and others)
     if proto == proto_names.TCP then
         -- Get TCP Flags
+    elseif proto == proto_names.ICMP then
+        -- Get ICMP Types
     end
 
     self.invalid_ip_length:value(valid_ip_length)
