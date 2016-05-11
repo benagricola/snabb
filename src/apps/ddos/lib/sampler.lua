@@ -12,18 +12,24 @@ local counter       = require("core.counter")
 local packet        = require("core.packet")
 local math          = require("math")
 local ipv4          = require("lib.protocol.ipv4")
+local math          = require("math")
 local math_exp      = math.exp
 local math_fmod     = math.fmod
 local math_ceil     = math.ceil
+local table         = require("table")
+local table_insert  = table.insert
+local table_concat  = table.concat
 local app_now       = require("core.app").now
 local ffi           = require("ffi")
 local bit           = require("bit")
 local bit_band      = bit.band
+local ffi_copy      = ffi.copy
 local ffi_cast      = ffi.cast
 local ffi_typeof    = ffi.typeof
 
 local rd16, wr16, rd32, wr32 = lwutil.rd16, lwutil.wr16, lwutil.rd32, lwutil.wr32
 local ntohs, ntohl = lwutil.htons, lwutil.htonl
+local ntop, pton = ipv4.ntop, ipv4.pton
 
 local n_ethertype_ipv4     = constants.n_ethertype_ipv4
 local n_ethertype_ipv6     = constants.n_ethertype_ipv6
@@ -96,19 +102,26 @@ local function int_to_dotted(num)
         local octet = num % 256
         num = num - octet
         num = num / 256
-        table.insert(octets, octet)
+        table_insert(octets, octet)
     end
-    return table.concat(octets,".")
+    return table_concat(octets, ".")
+end
+
+local function get_ipv4(offset, mask)
+    local in_addr  = ffi.new("uint8_t[4]")
+    ffi_copy(in_addr, offset, 4)
+    in_addr = bit_band(in_addr, mask)
+    return in_addr
 end
 
 local function get_ipv4_src(p, mask)
-    local ip = bit_band(rd32(p + o_ipv4_src_addr), mask)
-    return int_to_dotted(ip)
+    local ip = get_ipv4(p + o_ipv4_src_addr, mask)
+    return ntop(ip)
 end
 
 local function get_ipv4_dst(p, mask)
-    local ip = bit_band(rd32(p + o_ipv4_dst_addr), mask)
-    return int_to_dotted(ip)
+    local ip = get_ipv4(p + o_ipv4_src_addr, mask)
+    return ntop(ip)
 end
 
 -- Represents a sample of discrete values, tracking a count for each value and a total.
