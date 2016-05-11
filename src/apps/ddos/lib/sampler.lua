@@ -211,7 +211,7 @@ function Sample:value(value, count)
 
     -- If top value is no longer certain, then reset
     elseif self.top_value then
-        if iself.top_value[3] / self.total < certainty then
+        if self.top_value[3] / self.total < certainty then
             self.top_value = nil
         end
     end
