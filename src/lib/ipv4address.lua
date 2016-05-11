@@ -6,6 +6,8 @@ local bit_lshift = bit.lshift
 local bit_tobit  = bit.tobit
 local bit_bxor   = bit.bxor
 
+local lib = require("core.lib")
+
 local string = require("string")
 local string_format = string.format
 
@@ -17,7 +19,7 @@ local ffi_string = ffi.string
 
 local C = ffi.C
 
-local ipv4 = require("lib.protocol.ipv4")
+local ntohs, htons, ntohl, htonl = lib.ntohs, lib.htons, lib.ntohl, lib.htonl
 
 local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; uint8_t mask; }')
 local ipv4_addr_mt = {}
@@ -50,7 +52,7 @@ function ipv4_addr_mt:new (addr, mask)
 
    -- If initialising with uchar_ptr_t, assume IP in raw form in packet
    if ffi_istype(uchar_ptr_t, addr) then
-      ipv4_addr.addr = ffi_cast("uint32_t*", addr)[0]
+      ipv4_addr.addr = ntohl(ffi_cast("uint32_t*", addr)[0])
 
    -- If initialising with string, assume dotted notation IP address
    else
@@ -81,9 +83,9 @@ function ipv4_addr_mt:__tostring ()
    local n4 = bit_band(bit_rshift(masked, 24), 0x000000FF)
 
    if mask == 32 then
-      return string_format("%d.%d.%d.%d", n1, n2, n3, n4)
+      return string_format("%d.%d.%d.%d", n4, n3, n2, n1)
    else
-      return string_format("%d.%d.%d.%d/%d", n1, n2, n3, n4, mask)
+      return string_format("%d.%d.%d.%d/%d", n4, n3, n2, n1, mask)
    end
 end
 
