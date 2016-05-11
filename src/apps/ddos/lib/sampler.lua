@@ -19,6 +19,7 @@ local math_ceil     = math.ceil
 local table         = require("table")
 local table_insert  = table.insert
 local table_concat  = table.concat
+local ip_addr       = require("lib.ipv4address")
 local app_now       = require("core.app").now
 local ffi           = require("ffi")
 local bit           = require("bit")
@@ -96,30 +97,14 @@ local function get_ipv4_proto(p)
     return p[o_ipv4_proto]
 end
 
-local function int_to_dotted(num)
-    local octets = {}
-    while num > 0 do
-        local octet = num % 256
-        num = num - octet
-        num = num / 256
-        table_insert(octets, octet)
-    end
-    return table_concat(octets, ".")
-end
-
-local function get_ipv4(offset, mask)
-    local in_addr = ffi_cast("uint32_t*", offset)
-    return bit_band(mask, in_addr[0])
-end
-
 local function get_ipv4_src(p, mask)
-    local ip = get_ipv4(p + o_ipv4_src_addr, mask)
-    return int_to_dotted(ip)
+    local ip = ip_addr:new(p + o_ipv4_src_addr)
+    return tostring(ip)
 end
 
 local function get_ipv4_dst(p, mask)
-    local ip = get_ipv4(p + o_ipv4_src_addr, mask)
-    return int_to_dotted(ip)
+    local ip = ip_addr:new(p + o_ipv4_dst_addr)
+    return tostring(ip)
 end
 
 -- Represents a sample of discrete values, tracking a count for each value and a total.
