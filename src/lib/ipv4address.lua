@@ -75,10 +75,10 @@ function ipv4_addr_mt:__tostring ()
    local ip = self.addr
    local mask = self.mask
    local masked = bit_band(bin_masks[mask], ip)
-   local n1 = bit_band(bit_rshift(ip, 0),  0x000000FF)
-   local n2 = bit_band(bit_rshift(ip, 8),  0x000000FF)
-   local n3 = bit_band(bit_rshift(ip, 16), 0x000000FF)
-   local n4 = bit_band(bit_rshift(ip, 24), 0x000000FF)
+   local n1 = bit_band(bit_rshift(masked, 0),  0x000000FF)
+   local n2 = bit_band(bit_rshift(masked, 8),  0x000000FF)
+   local n3 = bit_band(bit_rshift(masked, 16), 0x000000FF)
+   local n4 = bit_band(bit_rshift(masked, 24), 0x000000FF)
 
    if mask == 32 then
       return string_format("%d.%d.%d.%d", n1, n2, n3, n4)
