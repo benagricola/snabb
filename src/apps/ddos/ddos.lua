@@ -12,6 +12,7 @@ local log_critical  = log.critical
 local log_debug     = log.debug
 local ffi           = require("ffi")
 local ffi_istype    = ffi.istype
+local ffi_typeof    = ffi.typeof
 local link          = require("core.link")
 local link_receive  = link.receive
 local link_empty    = link.empty
