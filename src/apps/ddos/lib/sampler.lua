@@ -109,17 +109,17 @@ end
 
 local function get_ipv4(offset, mask)
     local in_addr = ffi_cast("uint32_t*", offset)
-    return bit_band(in_addr[0], mask)
+    return bit_band(mask, in_addr[0])
 end
 
 local function get_ipv4_src(p, mask)
     local ip = get_ipv4(p + o_ipv4_src_addr, mask)
-    return ip
+    return ipv4:ntop(ip)
 end
 
 local function get_ipv4_dst(p, mask)
     local ip = get_ipv4(p + o_ipv4_src_addr, mask)
-    return ip
+    return ipv4:ntop(ip)
 end
 
 -- Represents a sample of discrete values, tracking a count for each value and a total.
