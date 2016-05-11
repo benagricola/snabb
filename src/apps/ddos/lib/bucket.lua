@@ -263,7 +263,7 @@ function Bucket:status()
 
     local msg = "%s [%s]: %s/%s pps burst - %s/%s pps avg - %s/%s bps burst - %s/%s bps avg - Totals: %s packets / %s bytes"
     log_info(msg,
-        rpad(self.name, 12),
+        rpad(self.name, 15),
         rpad(violated, 9),
         lpad(log_num_prefix(self:get_counter('pps')), 7),
         rpad(log_num_prefix(self.pps_burst_rate or 0), 7),
