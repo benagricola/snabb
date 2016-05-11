@@ -114,12 +114,12 @@ end
 
 local function get_ipv4_src(p, mask)
     local ip = get_ipv4(p + o_ipv4_src_addr, mask)
-    return ipv4:ntop(ip)
+    return int_to_dotted(ip)
 end
 
 local function get_ipv4_dst(p, mask)
     local ip = get_ipv4(p + o_ipv4_src_addr, mask)
-    return ipv4:ntop(ip)
+    return int_to_dotted(ip)
 end
 
 -- Represents a sample of discrete values, tracking a count for each value and a total.
