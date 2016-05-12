@@ -249,7 +249,7 @@ SampleSet = {}
 function SampleSet:new(cfg)
     local self = {
         name               = cfg.name or "Unknown Sample Set",
-        started            = app_now(),
+        started            = app_now() - cfg.period, -- Note: we take 1 * period away because the attack would've already started 1 period ago to breach threshold
         finished           = 0,
         sampled_packets    = 0, -- Note - this is total packets *sampled*, multiply by sample rate for approximate total packet count
         sampled_bits       = 0, -- Note - this is total bits *sampled*, multiply by sample rate for approximate total bit count
