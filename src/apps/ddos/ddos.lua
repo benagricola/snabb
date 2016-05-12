@@ -81,7 +81,12 @@ function Detector:write_status()
 
     -- Write file and then rename into new file
     local status_file = assert(io.open(status_temp_path, "w"))
-    status_file:write(m_pack(self.buckets:get_buckets()))
+    local status = {
+        buckets   = self.buckets:get_buckets(),
+        timestamp = app_now(),
+    }
+
+    status_file:write(m_pack(status))
     status_file:flush()
     status_file:close()
 
