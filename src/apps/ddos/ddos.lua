@@ -16,6 +16,8 @@ local ffi_typeof    = ffi.typeof
 local link          = require("core.link")
 local link_receive  = link.receive
 local link_empty    = link.empty
+local os            = require("os")
+local os_time       = os.time
 local io            = require("io")
 local io_open       = io.open
 local packet        = require("core.packet")
@@ -82,8 +84,9 @@ function Detector:write_status()
     -- Write file and then rename into new file
     local status_file = assert(io.open(status_temp_path, "w"))
     local status = {
-        buckets   = self.buckets:get_buckets(),
-        timestamp = app_now(),
+        buckets       = self.buckets:get_buckets(),
+        app_timestamp = app_now(),
+        timestamp     = os_time()
     }
 
     status_file:write(m_pack(status))
