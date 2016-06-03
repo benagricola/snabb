@@ -39,6 +39,7 @@ local o_ipv4_proto         = constants.o_ipv4_proto
 local o_ipv4_total_length  = constants.o_ipv4_total_length
 local o_ipv4_src_addr      = constants.o_ipv4_src_addr
 local o_ipv4_dst_addr      = constants.o_ipv4_dst_addr
+local o_ipv4_tcp_offset_and_flags = 12
 local ethernet_header_size = constants.ethernet_header_size
 
 local proto_names = {
@@ -126,6 +127,12 @@ local function get_ipv4_payload(p)
     return p + ihl
 end
 
+-- IPv4 Flags, *not* TCP
+local function get_ipv4_flags(p)
+   return p[o_ipv4_flags]
+end
+
+
 local function get_ipv4_src_port(p)
    -- Assumes that the packet looks like TCP or UDP.
    return ntohs(rd16(p))
@@ -136,8 +143,42 @@ local function get_ipv4_dst_port(p)
    return ntohs(rd16(p + 2))
 end
 
-local function get_ipv4_flags(p)
-   return p[o_ipv4_flags]
+local function get_offset_tcp_flags(p)
+    local offset_and_ns = p[o_ipv4_tcp_offset_and_flags]
+    local remaining_flags = p[o_ipv4_tcp_offset_and_flags+1]
+
+    offset = bit_band(offset_and_ns, 0xE0) / 0x20
+
+    local flags = {}
+
+    if bit_band(offset_and_ns, 0x01) then
+        table_insert(flags, "NS")
+    end
+    if bit_band(remaining_flags, 0x80) == 0x80 then
+        table_insert(flags, "CWR")
+    end
+    if bit_band(remaining_flags, 0x40) == 0x40 then
+        table_insert(flags, "ECE")
+    end
+    if bit_band(remaining_flags, 0x20) == 0x20 then
+        table_insert(flags, "URG")
+    end
+    if bit_band(remaining_flags, 0x10) == 0x10 then
+        table_insert(flags, "ACK")
+    end
+    if bit_band(remaining_flags, 0x08) == 0x08 then
+        table_insert(flags, "PSH")
+    end
+    if bit_band(remaining_flags, 0x04) == 0x04 then
+        table_insert(flags, "RST")
+    end
+    if bit_band(remaining_flags, 0x02) == 0x02 then
+        table_insert(flags, "SYN")
+    end
+    if bit_band(remaining_flags, 0x01) == 0x01 then
+        table_insert(flags, "FIN")
+    end
+    return offset, table_concat(flags," ")
 end
 
 
@@ -268,7 +309,7 @@ function SampleSet:new(cfg)
         afi                = Sample:new(cfg.afi_certainty or 0.6, 3), -- Certainty of 0.6, limit of 3 discrete values - we only track IPv4, IPv6 and ARP.
         protocol           = Sample:new(cfg.protocol_certainty or 0.6, 142), -- Currently 142 'known' IP protocols
 
-        tcp_flags          = Sample:new(cfg.tcp_flags_certainty or 0.6, 9), -- 9 Possible TCP flags
+        protocol_flags     = Sample:new(cfg.protocol_flags_certainty or 0.6, 100),
         src_hosts          = Sample:new(cfg.src_hosts or 0.6, cfg.src_hosts_limit or 1000), -- Limit to 1000 possible Source IPs
         src_subnets        = Sample:new(cfg.src_subnets or 0.6, cfg.src_subnets_limit or 100),  -- Limit to 100 possible Source Subnets
         src_ports          = Sample:new(cfg.src_ports or 0.6, cfg.src_ports_limit or 1000), -- Limit to 1000 possible Source Ports
@@ -331,7 +372,6 @@ function SampleSet:sample(p)
         local mf_set = bit_band(flags, 0x20) == 0x20
         self.is_fragment:value(mf_set)
 
-
         -- Parse IPv4 Protocol
         proto = get_ipv4_proto(e_payload)
         self.protocol:value((proto_nums[tonumber(proto)] or 'unknown'):lower())
@@ -371,6 +411,9 @@ function SampleSet:sample(p)
     -- Protocols could be encapsulated in both IPv4 and 6 (and others)
     if proto == proto_names.TCP then
         -- Get TCP Flags
+        local offset, tcp_flags = get_tcp_flags(ipv4_payload)
+        self.protocol_flags:value(tcp_flags)
+
     elseif proto == proto_names.ICMP then
         -- Get ICMP Types
     end

@@ -58,6 +58,8 @@ function Bucket:new(cfg)
             bps           = open_counter(cfg.name, 'bps'),
             avg_pps       = open_counter(cfg.name, 'avg_pps'),
             avg_bps       = open_counter(cfg.name, 'avg_bps'),
+            peak_pps      = open_counter(cfg.name, 'peak_pps'),
+            peak_bps      = open_counter(cfg.name, 'peak_bps'),
             total_packets = open_counter(cfg.name, 'total_packets'),
             total_bits    = open_counter(cfg.name, 'total_bits'),
         },
@@ -136,6 +138,20 @@ function Bucket:calculate_rate(now)
     self:set_counter('avg_pps', avg_pps)
     self:set_counter('avg_bps', avg_bps)
 
+    -- Calculate peak PPS / BPS
+    -- Under normal circumstances this is the peak PPS / BPS since last reset
+    -- Peak values are reset when violation state changes
+    local peak_pps = self:get_counter('peak_pps')
+    local peak_bps = self:get_counter('peak_bps')
+
+    if pps > peak_pps then
+        self:set_counter('peak_pps', pps)
+    end
+
+    if bps > peak_bps then
+        self:set_counter('peak_bps', bps)
+    end
+
     -- Add to totals
     self:add_counter('total_packets', self.cur_packets)
     self:add_counter('total_bits', self.cur_bits)
@@ -175,6 +191,11 @@ function Bucket:get_counter(name)
     return tonumber(counter.read(cnt))
 end
 
+function Bucket:reset_peak()
+    -- Reset peak PPS / BPS
+    self:set_counter('peak_pps', 0)
+    self:set_counter('peak_bps', 0)
+end
 
 function Bucket:check_violation(now)
     local violation = false
@@ -205,6 +226,9 @@ function Bucket:check_violation(now)
         if not self.violated then
             self.first_violated = now
 
+            -- Reset peak counters
+            self:reset_peak()
+
             -- Create sampler to store this violation if it doesnt already exist
             if not self.sampler then
                 self.sampler = SampleSet:new(self)
@@ -216,6 +240,10 @@ function Bucket:check_violation(now)
     elseif self.violated then
         self.violated = false
         self.first_violated = 0
+
+        -- Reset peak counters
+        self:reset_peak()
+
         -- Remove sampler
         self.sampler = nil
     end
