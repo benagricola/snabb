@@ -293,7 +293,7 @@ function SampleSet:new(cfg)
         started            = app_now() - cfg.period, -- Note: we take 1 * period away because the attack would've already started 1 period ago to breach threshold
         finished           = 0,
         sampled_packets    = 0, -- Note - this is total packets *sampled*, multiply by sample rate for approximate total packet count
-        sampled_bits       = 0, -- Note - this is total bits *sampled*, multiply by sample rate for approximate total bit count
+        sampled_bytes      = 0, -- Note - this is total bytes *sampled*, multiply by sample rate for approximate total byte count
 
         sampled_duration   = 0,
         subnet_mask        = subnet_mask, -- Store subnet mask for use by consuming applications
@@ -326,14 +326,15 @@ end
 function SampleSet:sample(p)
     self.sampled_packets = self.sampled_packets + 1
 
+    -- Packet length is in bytes. This is only used for 'size' calculations not speed, so keep as bytes
     local packet_length = p.length
-    self.sampled_bits = self.sampled_bits + packet_length
+    self.sampled_bytes = self.sampled_bytes + packet_length
 
     -- Average size of packets across whole sample set
     -- TODO: Moving average over reduced number of samples may make more sense in practice
     -- avg -= avg / N;
     -- avg += new_sample / N;
-    self.avg_packet_size = self.sampled_bits / self.sampled_packets
+    self.avg_packet_size = self.sampled_bytes / self.sampled_packets
 
     if packet_length > self.max_packet_size then
         self.max_packet_size = packet_length
