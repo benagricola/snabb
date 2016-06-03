@@ -108,7 +108,8 @@ function Bucket:add_packet(packet)
     local sample_rate = self.sample_rate
 
     local cur_packets = self.cur_packets + 1
-    local cur_bits    = self.cur_bits + packet.length
+    -- Packet.length is bytes
+    local cur_bits    = self.cur_bits + (packet.length * 8)
 
     -- If bucket is violated, sample packet based on desired rate
     if self.violated and math_fmod(cur_packets, sample_rate) == 0 then
