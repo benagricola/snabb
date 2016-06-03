@@ -411,7 +411,7 @@ function SampleSet:sample(p)
     -- Protocols could be encapsulated in both IPv4 and 6 (and others)
     if proto == proto_names.TCP then
         -- Get TCP Flags
-        local offset, tcp_flags = get_tcp_flags(ipv4_payload)
+        local offset, tcp_flags = get_offset_tcp_flags(ipv4_payload)
         self.protocol_flags:value(tcp_flags)
 
     elseif proto == proto_names.ICMP then
