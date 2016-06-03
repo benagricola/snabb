@@ -349,6 +349,8 @@ function SampleSet:sample(p)
     local valid_ip_length  = false
 
     local proto
+    local ip_payload
+
     -- If IPv4 packet, parse as such
     if ethertype == n_ethertype_ipv4 then
         self.afi:value(afi.ipv4) -- Add '1' to incidence of ipv4 traffic
@@ -400,6 +402,8 @@ function SampleSet:sample(p)
         self.src_ports:value(src_port)
         self.dst_ports:value(dst_port)
 
+        ip_payload = ipv4_payload
+
     -- elseif ethertype == ethertype_ipv6 then
         --self.afi:value(afi.ipv6)
 
@@ -408,14 +412,18 @@ function SampleSet:sample(p)
         log_error("Attempted to sample packet with unsupported ethertype %d", tonumber(ethertype))
     end
 
-    -- Protocols could be encapsulated in both IPv4 and 6 (and others)
-    if proto == proto_names.TCP then
-        -- Get TCP Flags
-        local offset, tcp_flags = get_offset_tcp_flags(ipv4_payload)
-        self.protocol_flags:value(tcp_flags)
+    if not ip_payload then
+        log_error("No IP Payload to sample")
+    else
+        -- Protocols could be encapsulated in both IPv4 and 6 (and others)
+        if proto == proto_names.TCP then
+            -- Get TCP Flags
+            local offset, tcp_flags = get_offset_tcp_flags(ip_payload)
+            self.protocol_flags:value(tcp_flags)
 
-    elseif proto == proto_names.ICMP then
-        -- Get ICMP Types
+        elseif proto == proto_names.ICMP then
+            -- Get ICMP Types
+        end
     end
 
     self.invalid_ip_length:value(valid_ip_length)
