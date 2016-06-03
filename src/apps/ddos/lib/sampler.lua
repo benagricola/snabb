@@ -151,9 +151,6 @@ local function get_offset_tcp_flags(p)
 
     local flags = {}
 
-    if bit_band(offset_and_ns, 0x01) then
-        table_insert(flags, "NS")
-    end
     if bit_band(remaining_flags, 0x80) == 0x80 then
         table_insert(flags, "CWR")
     end
@@ -178,7 +175,10 @@ local function get_offset_tcp_flags(p)
     if bit_band(remaining_flags, 0x01) == 0x01 then
         table_insert(flags, "FIN")
     end
-    return offset, table_concat(flags," ")
+    -- if bit_band(offset_and_ns, 0x01) then
+    --     table_insert(flags, "NS")
+    -- end
+    return offset, table_concat(flags,",")
 end
 
 
