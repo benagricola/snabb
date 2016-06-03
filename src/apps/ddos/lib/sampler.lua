@@ -178,7 +178,7 @@ local function get_offset_tcp_flags(p)
     -- if bit_band(offset_and_ns, 0x01) then
     --     table_insert(flags, "NS")
     -- end
-    return offset, table_concat(flags,",")
+    return offset, table_concat(flags,", ")
 end
 
 
