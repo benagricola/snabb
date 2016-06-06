@@ -26,6 +26,10 @@ local bit_band      = bit.band
 local ffi_copy      = ffi.copy
 local ffi_cast      = ffi.cast
 local ffi_typeof    = ffi.typeof
+local uuid          = require("lib.uuid")
+
+-- Seed UUID lib based on startup time of process.
+uuid.seed()
 
 local rd16, wr16, rd32, wr32 = lwutil.rd16, lwutil.wr16, lwutil.rd32, lwutil.wr32
 local ntohs, ntohl = lwutil.htons, lwutil.htonl
@@ -201,6 +205,7 @@ function Sample:new(certainty, limit)
         value_names = {},
         top_value   = nil,
         total       = 0,
+        uuid        = uuid(),
     }
 
     return setmetatable(self, {__index = Sample})
