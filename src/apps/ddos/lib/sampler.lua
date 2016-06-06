@@ -205,7 +205,6 @@ function Sample:new(certainty, limit)
         value_names = {},
         top_value   = nil,
         total       = 0,
-        uuid        = uuid(),
     }
 
     return setmetatable(self, {__index = Sample})
@@ -322,6 +321,7 @@ function SampleSet:new(cfg)
         dst_subnets        = Sample:new(cfg.dst_subnets or 0.6, cfg.dst_subnets_limit or 100),  -- Limit to 100 possible Destination Subnets
         dst_ports          = Sample:new(cfg.dst_ports or 0.6, cfg.dst_ports_limit or 1000), -- Limit to 1000 possible Destination Ports
         data               = {},
+        uuid               = uuid(), -- Add a UUID to each sample set for unique referencing in external programs
     }
 
     return setmetatable(self, {__index = SampleSet})
