@@ -6,6 +6,7 @@ local log_warn      = log.warn
 local log_error     = log.error
 local log_critical  = log.critical
 local log_debug     = log.debug
+local os_time       = require("os").time
 local constants     = require("apps.lwaftr.constants")
 local lwutil        = require("apps.lwaftr.lwutil")
 local counter       = require("core.counter")
@@ -298,8 +299,8 @@ SampleSet = {}
 function SampleSet:new(cfg)
     local self = {
         name               = cfg.name or "Unknown Sample Set",
-        started            = app_now() - cfg.period, -- Note: we take 1 * period away because the attack would've already started 1 period ago to breach threshold
-        finished           = 0,
+        started            = os_time() - cfg.period, -- Note: we take 1 * period away because the attack would've already started 1 period ago to breach threshold
+        finished           = os_time(), -- Default to 1s duration
         sampled_packets    = 0, -- Note - this is total packets *sampled*, multiply by sample rate for approximate total packet count
         sampled_bytes      = 0, -- Note - this is total bytes *sampled*, multiply by sample rate for approximate total byte count
 
@@ -345,9 +346,9 @@ function SampleSet:sample(p)
     -- avg += new_sample / N;
     self.avg_packet_size = self.sampled_bytes / self.sampled_packets
 
-    if packet_length > self.max_packet_size then
+    if packet_length > self.max_packet_size or self.max_packet_size == 0 then
         self.max_packet_size = packet_length
-    elseif packet_length < self.min_packet_size then
+    elseif (packet_length < self.min_packet_size) or self.min_packet_size == 0 then
         self.min_packet_size = packet_length
     end
 
@@ -438,7 +439,7 @@ function SampleSet:sample(p)
 
     self.invalid_ip_length:value(valid_ip_length)
     self.invalid_ip_version:value(valid_ip_version)
-    self.finished = app_now()
+    self.finished = os_time()
     self.sampled_duration = self.finished - self.started
 end
 
@@ -448,5 +449,5 @@ function SampleSet:status()
 end
 
 function SampleSet:finish()
-    self.finished = app_now()
+    self.finished = os_time()
 end
