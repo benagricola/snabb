@@ -205,6 +205,8 @@ function Bucket:check_violation(now)
     local avg_pps = self:get_counter('avg_pps')
     local avg_bps = self:get_counter('avg_bps')
 
+    local cooldown = 5
+
     -- If self is violated either in burst or moving average, set the violation type
     if self.bps_rate then
         if bps > self.bps_burst_rate then
@@ -222,9 +224,12 @@ function Bucket:check_violation(now)
         end
     end
 
+    local time_since_last_violation = now - self.last_violated
 
     if violation then
-        if not self.violated then
+        -- If this rule was last violated more than 'cooldown' seconds ago, this is a new violation
+        if not self.violated and time_since_last_violation >= cooldown then
+
             self.first_violated = now
 
             -- Reset peak counters
@@ -234,19 +239,26 @@ function Bucket:check_violation(now)
             if not self.sampler then
                 self.sampler = SampleSet:new(self)
             end
+        else
+            log_info("Bucket %s violated but still cooling down for %ds", self.name, time_since_last_violation)
         end
 
         self.violated = violation
         self.last_violated = now
+
+    -- Bucket is no longer violated but our last visible status was
+    -- Check that 'cooldown' seconds have passed without violation
     elseif self.violated then
-        self.violated = false
-        self.first_violated = 0
+        if time_since_last_violation >= cooldown then
+            self.violated = false
+            self.first_violated = 0
 
-        -- Reset peak counters
-        self:reset_peak()
-
-        -- Remove sampler
-        self.sampler = nil
+            -- Reset peak counters
+            self:reset_peak()
+            self.sampler = nil
+        else
+            log_info("Bucket %s not violated but still cooling down for %ds", self.name, time_since_last_violation)
+        end
     end
 end
 
