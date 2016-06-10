@@ -226,9 +226,9 @@ function Bucket:check_violation(now)
 
     local time_since_last_violation = now - (self.last_violated+1)
 
-    if violation then
+    if violation and time_since_last_violation >= cooldown then
         -- If this rule was last violated more than 'cooldown' seconds ago, this is a new violation
-        if not self.violated and time_since_last_violation >= cooldown then
+        if not self.violated then
 
             self.first_violated = now
 
@@ -239,14 +239,13 @@ function Bucket:check_violation(now)
             if not self.sampler then
                 self.sampler = SampleSet:new(self)
             end
-        elseif time_since_last_violation == 0 then
-            -- Still Violated
-        else
-            log_info("Bucket %s violated but still cooling down for %ds", self.name, cooldown - time_since_last_violation)
         end
 
         self.violated = violation
         self.last_violated = now
+
+    elseif violation then
+        log_info("Bucket %s violated but still cooling down for %ds", self.name, cooldown - time_since_last_violation)
 
     -- Bucket is no longer violated but our last visible status was
     -- Check that 'cooldown' seconds have passed without violation
