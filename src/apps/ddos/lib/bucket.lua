@@ -239,13 +239,15 @@ function Bucket:check_violation(now)
             if not self.sampler then
                 self.sampler = SampleSet:new(self)
             end
+            self.violated = violation
         end
 
-        self.violated = violation
         self.last_violated = now
 
     elseif violation then
         log_info("Bucket %s violated but still cooling down for %ds", self.name, cooldown - time_since_last_violation)
+        self.violated = violation
+        self.last_violated = now
 
     -- Bucket is no longer violated but our last visible status was
     -- Check that 'cooldown' seconds have passed without violation
