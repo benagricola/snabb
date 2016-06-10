@@ -241,10 +241,8 @@ function Bucket:check_violation(now)
                 -- Reset peak counters
                 self:reset_peak()
 
-                -- Create sampler to store this violation if it doesnt already exist
-                if not self.sampler then
-                    self.sampler = SampleSet:new(self)
-                end
+                -- Create sampler to store this violation, this overrides old sampler
+                self.sampler = SampleSet:new(self)
             end
 
         -- Ongoing violation
@@ -264,7 +262,6 @@ function Bucket:check_violation(now)
             -- Cooldown expired, new event
             else
                 self.violated = false
-                self.sampler = nil
             end
         -- Still not in violation, mebbe log?
         else
