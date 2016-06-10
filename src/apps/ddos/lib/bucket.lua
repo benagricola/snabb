@@ -224,45 +224,51 @@ function Bucket:check_violation(now)
         end
     end
 
-    local time_since_last_violation = now - (self.last_violated+1)
+    local time_since_last_violation = now - (self.last_violated)
 
-    if violation and time_since_last_violation >= cooldown then
-        -- If this rule was last violated more than 'cooldown' seconds ago, this is a new violation
+    -- Bucket in violation
+    if violation then
+        -- New violation, check cooldown
         if not self.violated then
+            -- Cooldown not expired yet
+            if time_since_last_violation < cooldown then
+                log_info("Bucket %s violated but still cooling down for %ds", self.name, cooldown - time_since_last_violation)
+            -- Cooldown expired, new event
+            else
+                self.first_violated = now
+                self.violated = violation
+                self.last_violated = now
+                -- Reset peak counters
+                self:reset_peak()
 
-            self.first_violated = now
-
-            -- Reset peak counters
-            self:reset_peak()
-
-            -- Create sampler to store this violation if it doesnt already exist
-            if not self.sampler then
-                self.sampler = SampleSet:new(self)
+                -- Create sampler to store this violation if it doesnt already exist
+                if not self.sampler then
+                    self.sampler = SampleSet:new(self)
+                end
             end
+
+        -- Ongoing violation
+        else
+            self.last_violated = now
             self.violated = violation
         end
 
-        self.last_violated = now
+    -- Bucket not in violation
+    else
+        -- Ending violation, check cooldown
+        if self.violated then
+            -- Cooldown not expired yet
+            if time_since_last_violation < cooldown then
+                log_info("Bucket %s violated but still cooling down for %ds", self.name, cooldown - time_since_last_violation)
 
-    elseif violation then
-        log_info("Bucket %s violated but still cooling down for %ds", self.name, cooldown - time_since_last_violation)
-        self.violated = violation
-        self.last_violated = now
-
-    -- Bucket is no longer violated but our last visible status was
-    -- Check that 'cooldown' seconds have passed without violation
-    elseif self.violated then
-        if time_since_last_violation >= cooldown then
-            self.violated = false
-            self.first_violated = 0
-
-            -- Reset peak counters
-            self:reset_peak()
-            self.sampler = nil
-        elseif time_since_last_violation == 0 then
-            -- Still Not violated
+            -- Cooldown expired, new event
+            else
+                self.violated = false
+                self.sampler = nil
+            end
+        -- Still not in violation, mebbe log?
         else
-            log_info("Bucket %s not violated but still cooling down for %ds", self.name, cooldown - time_since_last_violation)
+
         end
     end
 end
