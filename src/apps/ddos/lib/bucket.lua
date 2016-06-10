@@ -240,7 +240,7 @@ function Bucket:check_violation(now)
                 self.sampler = SampleSet:new(self)
             end
         else
-            log_info("Bucket %s violated but still cooling down for %ds", self.name, time_since_last_violation)
+            log_info("Bucket %s violated but still cooling down for %ds", self.name, cooldown - time_since_last_violation)
         end
 
         self.violated = violation
@@ -257,7 +257,7 @@ function Bucket:check_violation(now)
             self:reset_peak()
             self.sampler = nil
         else
-            log_info("Bucket %s not violated but still cooling down for %ds", self.name, time_since_last_violation)
+            log_info("Bucket %s not violated but still cooling down for %ds", self.name, cooldown - time_since_last_violation)
         end
     end
 end
