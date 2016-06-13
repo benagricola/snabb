@@ -54,6 +54,8 @@ function Bucket:new(cfg)
         bps_rate       = cfg.bps_rate,
         cooldown       = cfg.cooldown or 5, -- Cooldown timer before and after violation to avoid flapping
         sample_rate    = cfg.sample_rate or 1000, -- Sample every 1000 packets when violated, by default
+        avg_pps        = 0, -- Used for calculations, counters are integers, this needs to be a float
+        avg_bps        = 0, -- Used for calculations, counters are integers, this needs to be a float
         counters       = {
             pps           = open_counter(cfg.name, 'pps'),
             bps           = open_counter(cfg.name, 'bps'),
@@ -131,18 +133,8 @@ function Bucket:calculate_rate(now)
     local pps = math_ceil(self.cur_packets / last_period)
     local bps = math_ceil(self.cur_bits / last_period)
 
-    local init_avg_pps = self:get_counter('avg_pps')
-    if init_avg_pps < 1 then
-        init_avg_pps = pps
-    end
-
-    local init_avg_bps = self:get_counter('avg_bps')
-    if init_avg_bps < 1 then
-        init_avg_bps = bps
-    end
-
-    local avg_pps = pps + exp_value * (init_avg_pps - pps)
-    local avg_bps = bps + exp_value * (init_avg_bps - bps)
+    local avg_pps = pps + exp_value * (self.avg_pps - pps)
+    local avg_bps = bps + exp_value * (self.avg_bps - bps)
 
     -- log_info("[%s] Avg PPS Calc: %s + %s * (%s - %s) = %s", self.name, tostring(pps), tostring(exp_value), tostring(self:get_counter('avg_pps')), tostring(pps), tostring(avg_pps))
     -- log_info("[%s] Avg BPS Calc: %s + %s * (%s - %s) = %s", self.name, tostring(bps), tostring(exp_value), tostring(self:get_counter('avg_bps')), tostring(bps), tostring(avg_bps))
@@ -150,7 +142,9 @@ function Bucket:calculate_rate(now)
     self:set_counter('pps', pps)
     self:set_counter('bps', bps)
 
-    -- Round to nearest integer, this fixes issues with 0 averages at low PPS and is still mostly accurate at high pps!
+    self.avg_pps = avg_pps
+    self.avg_bps = avg_bps
+
     self:set_counter('avg_pps', avg_pps)
     self:set_counter('avg_bps', avg_bps)
 
