@@ -132,12 +132,12 @@ function Bucket:calculate_rate(now)
     local bps = math_ceil(self.cur_bits / last_period)
 
     local init_avg_pps = self:get_counter('avg_pps')
-    if init_avg_pps == 0 then
+    if init_avg_pps < 1 then
         init_avg_pps = pps
     end
 
     local init_avg_bps = self:get_counter('avg_bps')
-    if init_avg_bps == 0 then
+    if init_avg_bps < 1 then
         init_avg_bps = bps
     end
 
