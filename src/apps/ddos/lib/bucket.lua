@@ -52,7 +52,8 @@ function Bucket:new(cfg)
         bps_burst_rate = cfg.bps_burst_rate,
         pps_rate       = cfg.pps_rate,
         bps_rate       = cfg.bps_rate,
-        sample_rate    = cfg.sample_rate or 1000, -- Sample every 100 packets when violated
+        cooldown       = cfg.cooldown or 5, -- Cooldown timer before and after violation to avoid flapping
+        sample_rate    = cfg.sample_rate or 1000, -- Sample every 1000 packets when violated, by default
         counters       = {
             pps           = open_counter(cfg.name, 'pps'),
             bps           = open_counter(cfg.name, 'bps'),
@@ -130,8 +131,11 @@ function Bucket:calculate_rate(now)
     local pps = math_ceil(self.cur_packets / last_period)
     local bps = math_ceil(self.cur_bits / last_period)
 
+
     local avg_pps = pps + exp_value * (self:get_counter('avg_pps') - pps)
+    log_info("Avg PPS Calc: %s + %s * (%s - %s) = %s", tostring(pps), tostring(exp_value), tostring(self:get_counter('avg_pps')), tostring(pps), tostring(avg_pps))
     local avg_bps = bps + exp_value * (self:get_counter('avg_bps') - bps)
+    log_info("Avg BPS Calc: %s + %s * (%s - %s) = %s", tostring(bps), tostring(exp_value), tostring(self:get_counter('avg_bps')), tostring(bps), tostring(avg_bps))
 
     self:set_counter('pps', pps)
     self:set_counter('bps', bps)
@@ -205,7 +209,7 @@ function Bucket:check_violation(now)
     local avg_pps = self:get_counter('avg_pps')
     local avg_bps = self:get_counter('avg_bps')
 
-    local cooldown = 5
+    local cooldown = self.cooldown
 
     -- If self is violated either in burst or moving average, set the violation type
     if self.bps_rate then
@@ -263,9 +267,6 @@ function Bucket:check_violation(now)
             else
                 self.violated = false
             end
-        -- Still not in violation, mebbe log?
-        else
-
         end
     end
 end
