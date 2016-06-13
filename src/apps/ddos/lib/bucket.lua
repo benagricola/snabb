@@ -131,9 +131,18 @@ function Bucket:calculate_rate(now)
     local pps = math_ceil(self.cur_packets / last_period)
     local bps = math_ceil(self.cur_bits / last_period)
 
+    local init_avg_pps = self:get_counter('avg_pps')
+    if init_avg_pps == 0 then
+        init_avg_pps = pps
+    end
 
-    local avg_pps = pps + exp_value * (self:get_counter('avg_pps') - pps)
-    local avg_bps = bps + exp_value * (self:get_counter('avg_bps') - bps)
+    local init_avg_bps = self:get_counter('avg_bps')
+    if init_avg_bps == 0 then
+        init_avg_bps = bps
+    end
+
+    local avg_pps = pps + exp_value * (init_avg_pps - pps)
+    local avg_bps = bps + exp_value * (init_avg_bps - bps)
 
     -- log_info("[%s] Avg PPS Calc: %s + %s * (%s - %s) = %s", self.name, tostring(pps), tostring(exp_value), tostring(self:get_counter('avg_pps')), tostring(pps), tostring(avg_pps))
     -- log_info("[%s] Avg BPS Calc: %s + %s * (%s - %s) = %s", self.name, tostring(bps), tostring(exp_value), tostring(self:get_counter('avg_bps')), tostring(bps), tostring(avg_bps))
@@ -142,8 +151,8 @@ function Bucket:calculate_rate(now)
     self:set_counter('bps', bps)
 
     -- Round to nearest integer, this fixes issues with 0 averages at low PPS and is still mostly accurate at high pps!
-    self:set_counter('avg_pps', math_ceil(avg_pps))
-    self:set_counter('avg_bps', math_ceil(avg_bps))
+    self:set_counter('avg_pps', avg_pps)
+    self:set_counter('avg_bps', avg_bps)
 
     -- Calculate peak PPS / BPS
     -- Under normal circumstances this is the peak PPS / BPS since last reset
