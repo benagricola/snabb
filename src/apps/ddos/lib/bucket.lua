@@ -133,9 +133,9 @@ function Bucket:calculate_rate(now)
 
 
     local avg_pps = pps + exp_value * (self:get_counter('avg_pps') - pps)
-    log_info("Avg PPS Calc: %s + %s * (%s - %s) = %s", tostring(pps), tostring(exp_value), tostring(self:get_counter('avg_pps')), tostring(pps), tostring(avg_pps))
+    log_info("[%s] Avg PPS Calc: %s + %s * (%s - %s) = %s", self.name, tostring(pps), tostring(exp_value), tostring(self:get_counter('avg_pps')), tostring(pps), tostring(avg_pps))
     local avg_bps = bps + exp_value * (self:get_counter('avg_bps') - bps)
-    log_info("Avg BPS Calc: %s + %s * (%s - %s) = %s", tostring(bps), tostring(exp_value), tostring(self:get_counter('avg_bps')), tostring(bps), tostring(avg_bps))
+    log_info("[%s] Avg BPS Calc: %s + %s * (%s - %s) = %s", self.name, tostring(bps), tostring(exp_value), tostring(self:get_counter('avg_bps')), tostring(bps), tostring(avg_bps))
 
     self:set_counter('pps', pps)
     self:set_counter('bps', bps)
