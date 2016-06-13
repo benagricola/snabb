@@ -140,8 +140,9 @@ function Bucket:calculate_rate(now)
     self:set_counter('pps', pps)
     self:set_counter('bps', bps)
 
-    self:set_counter('avg_pps', avg_pps)
-    self:set_counter('avg_bps', avg_bps)
+    -- Round to nearest integer, this fixes issues with 0 averages at low PPS and is still mostly accurate at high pps!
+    self:set_counter('avg_pps', math_ceil(avg_pps))
+    self:set_counter('avg_bps', math_ceil(avg_bps))
 
     -- Calculate peak PPS / BPS
     -- Under normal circumstances this is the peak PPS / BPS since last reset
