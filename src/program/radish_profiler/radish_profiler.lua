@@ -17,7 +17,7 @@ local log_error     = log.error
 local log_critical  = log.critical
 local log_debug     = log.debug
 
-local usage = require("program.radish-profiler.README_inc")
+local usage = require("program.radish_profiler.README_inc")
 
 local long_opts = {
     help     = "h",
