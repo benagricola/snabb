@@ -17,7 +17,7 @@ local log_error     = log.error
 local log_critical  = log.critical
 local log_debug     = log.debug
 
-local usage = require("program.ddos.README_inc")
+local usage = require("program.radish-profiler.README_inc")
 
 local long_opts = {
     help     = "h",
@@ -60,7 +60,7 @@ end
 function parse_args(args)
     local opt = {
         report = false,
-        config_file_path = "/etc/ddos/ddos.json",
+        config_file_path = "/etc/radish/profiler.json",
     }
 
     local handlers = {}
