@@ -117,7 +117,7 @@ function run (args)
     -- If this is a physical NIC then initialise 82599 driver
     if nic_exists(opt.int_in) then
         log_info("Input interface %s is physical device, initialising...", opt.int_in)
-        config.app(c, "int_in", intel.Intel82599, {
+        config.app(c, "int_in", intel.Intel1g, {
             pciaddr = opt.int_in,
         })
         config.link(c, "int_in.tx -> vlanmux.trunk")
@@ -152,7 +152,7 @@ function run (args)
         -- If this is a physical NIC then initialise 82599 driver
         if nic_exists(opt.int_out) then
             log_info("Output interface %s is physical device, initialising...", opt.int_out)
-            config.app(c, "int_out", intel.Intel82599, {
+            config.app(c, "int_out", intel.Intel1g, {
                 pciaddr = opt.int_out,
             })
             config.link(c, "ddos.output -> int_out.rx")
