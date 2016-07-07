@@ -1,9 +1,9 @@
 -- Use of this source code is governed by the Apache 2.0 license; see COPYING.
 
 -- intel1g: Device driver app for Intel 1G network cards
--- 
+--
 -- This is a device driver for Intel i210, i350 families of 1G network cards.
--- 
+--
 -- The driver aims to be fairly flexible about how it can be used. The
 -- user can specify whether to initialize the NIC, which hardware TX
 -- and RX queue should be used (or none), and the size of the TX/RX
@@ -15,7 +15,7 @@
 -- wire. The driver does not directly support these use cases but it
 -- avoids abstractions that would potentially come into conflict with
 -- them.
--- 
+--
 -- This flexibility does require more work from the user. For contrast
 -- consider the intel10g driver: its VMDq mode automatically selects
 -- available transmit/receive queues from a pool and initializes the
@@ -28,7 +28,7 @@
 -- networks will have creative ideas that we are not able to
 -- anticipate and so it is important to avoid assumptions about how
 -- the driver will be used.
--- 
+--
 -- Data sheets (reference documentation):
 -- http://www.intel.com/content/dam/www/public/us/en/documents/datasheets/ethernet-controller-i350-datasheet.pdf
 -- http://www.intel.com/content/dam/www/public/us/en/documents/datasheets/i210-ethernet-controller-datasheet.pdf
@@ -73,7 +73,7 @@ function Intel1g:new(conf)
    r.TCTL_EXT =	0x00404		-- Extended TX Control - RW
    r.MDICNFG = 	0x00E04		-- MDI Configuration - RW
    r.EEER = 	0x00E30		-- Energy Efficient Ethernet (EEE) Register
-   r.EIMC = 	0x01528		-- 
+   r.EIMC = 	0x01528		--
    --r.RXDCTL =	0x02828		-- legacy alias: RX Descriptor Control queue 0 - RW
    --r.TXDCTL =	0x03828		-- legacy alias: TX Descriptor Control queue 0 - RW
    r.GPRC = 	0x04074		-- Good Packets Receive Count - R/clr
@@ -85,10 +85,10 @@ function Intel1g:new(conf)
    r.TPR = 	0x040D0		-- Total Packets Received - R/clr
    r.TPT = 	0x040D4		-- Total Packets Transmitted - R/clr
    r.RPTHC = 	0x04104		-- Rx Packets to Host Count - R/clr
-   r.MANC =	0x05820		-- 
-   r.SWSM =	0x05b50		-- 
+   r.MANC =	0x05820		--
+   r.SWSM =	0x05b50		--
    r.SW_FW_SYNC=0x05b5c		-- Software Firmware Synchronization
-   r.EEMNGCTL=	0x12030		-- Management EEPROM Control Register
+   r.EEMNGCTL=	0x01010		-- Management EEPROM Control Register
 
    -- checks
    local deviceInfo= pci.device_info(pciaddress)
@@ -145,7 +145,7 @@ function Intel1g:new(conf)
       repeat until band(peek32(offset), mask) == (value or mask)
    end
 
-   -- 3.7.4.4.4 Using PHY Registers, 
+   -- 3.7.4.4.4 Using PHY Registers,
    local MDIOpage= -1		-- 8.27.3.21 HW resets to 0, but persists with SW reset!
    poke32(r.MDICNFG, 0)		-- 8.2.5 MDC/MDIO Config: 0x0000 = internal PHY
 
@@ -192,8 +192,8 @@ function Intel1g:new(conf)
 
    local function printPHYstatus()
     print("PHY Status:")
-    print("  PHYREG(0,0)  = " .. bit.tohex(readPHY(0,0)) .. " Copper Control")	-- p.545, 
-    print("  PHYREG(0,1)  = " .. bit.tohex(readPHY(0,1)) .. " Copper Status")	-- p.546, 
+    print("  PHYREG(0,0)  = " .. bit.tohex(readPHY(0,0)) .. " Copper Control")	-- p.545,
+    print("  PHYREG(0,1)  = " .. bit.tohex(readPHY(0,1)) .. " Copper Status")	-- p.546,
     local phyID1= readPHY(0,2)
     print("  PHYREG(0,2)  = " .. bit.tohex(phyID1) .. " PHY ID 1")		-- p.547, 8.27.3.3 PHY Identifier 1
     assert((phyID1 == 0x0141) or (phyID1 == 0x0154), "PHY ID1 is not 0x0141 (i210) or 0x0154 (i350)")
@@ -228,7 +228,7 @@ function Intel1g:new(conf)
     print("  PHYREG(0,23) = " .. bit.tohex(readPHY(0,23)) .. " Copper Specific Control 3")	-- p.560
     print("  PHYREG(2,16) = " .. bit.tohex(readPHY(2,16)) .. " MAC Specific Control 1")	-- p.561
     print("  PHYREG(2,19) = " .. bit.tohex(readPHY(2,19)) .. " MAC Specific Status")	-- p.561
-    print("  PHYREG(2,21) = " .. bit.tohex(readPHY(2,21)) .. " MAC Specific Control 2")	-- p.563         
+    print("  PHYREG(2,21) = " .. bit.tohex(readPHY(2,21)) .. " MAC Specific Control 2")	-- p.563
    end
 
    local function printTxStatus()
@@ -247,7 +247,7 @@ function Intel1g:new(conf)
     print("  RX Enable   = " .. yesno(rctl, 1))
     print("  RX Loopback = " .. yesno(rctl, 6))
    end
-   
+
    local function printNICstatus(r, title)
     print(title)
     printMACstatus()
@@ -283,7 +283,7 @@ function Intel1g:new(conf)
      wait32(r.MANC, {BLK_Phy_Rst_On_IDE=18}, 0)	-- wait untill IDE link stable
      -- 4.6.1 Acquiring Ownership over a Shared Resource, p.147
      -- and 4.6.2 Releasing Ownership
-     -- XXX to do: write wrappers for both software/software (SWSM.SMBI) 
+     -- XXX to do: write wrappers for both software/software (SWSM.SMBI)
      -- software/firmware (SWSM.SWESMBI) semamphores, then apply them...
      set32(r.SWSM, {SWESMBI= 1})		-- a. get software/firmware semaphore
      while band(peek32(r.SWSM), 0x02) ==0 do
@@ -430,7 +430,7 @@ function Intel1g:new(conf)
       -- Free packets that have been transmitted
       local function sync_transmit ()
          local cursor = tdh
-         tdh = peek32(r.TDH)			-- possible race condition, see 7.1.4.4, 7.2.3 
+         tdh = peek32(r.TDH)			-- possible race condition, see 7.1.4.4, 7.2.3
          while cursor ~= tdh do
             if txpackets[cursor] then
                packet.free(txpackets[cursor])
@@ -480,7 +480,7 @@ function Intel1g:new(conf)
       r.RXDCTL = 0xc028 + rxq*0x40	-- Receive Descriptor Control
 
       local rxdesc_t = ffi.typeof([[
-        struct { 
+        struct {
           uint64_t address;
           uint16_t length, cksum;
           uint8_t status, errors;
@@ -491,7 +491,7 @@ function Intel1g:new(conf)
       local rxdesc_ring_t = ffi.typeof("$[$]", rxdesc_t, ndesc)
       local rxdesc = ffi.cast(ffi.typeof("$&", rxdesc_ring_t),
                               memory.dma_alloc(ffi.sizeof(rxdesc_ring_t)))
-      
+
       -- Receive state
       local rxpackets = {}
       local rdh, rdt= 0, 0
@@ -579,7 +579,7 @@ function Intel1g:new(conf)
          poke32(r.RDT, rdt)
 	 --print("sync_receive():  rdh=",rdh, "  rdt=",rdt)
       end
-      
+
       function self:pull ()				-- move received frames from NIC.rxQueue to link.tx
          counters.pull= counters.pull +1
          --local lo = self.output[1]
@@ -637,7 +637,7 @@ function selftest ()
       print("SNABB_PCI_INTEL1G0 not set")
       os.exit(engine.test_skipped_code)
    end
-   
+
    local c = config.new()
    local basic = require("apps.basic.basic_apps")
    config.app(c, "source", basic.Source)

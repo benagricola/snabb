@@ -2,6 +2,7 @@ module(..., package.seeall)
 
 local S     = require("syscall")
 
+local pci   = require("lib.hardware.pci")
 local lib   = require("core.lib")
 local json  = require("lib.json")
 local intel = require("apps.intel.intel1g")
@@ -110,6 +111,8 @@ function run (args)
 
     local c = config.new()
 
+    pci.scan_devices()
+    print(pci.devices)
     config.app(c, "ddos", ddos.Detector, {config_file_path = opt.config_file_path})
 
     config.app(c, "vlanmux", vlan.VlanMux)

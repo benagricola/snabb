@@ -179,7 +179,7 @@ function root_check ()
 end
 
 -- Return the canonical (abbreviated) representation of the PCI address.
--- 
+--
 -- example: canonical("0000:01:00.0") -> "01:00.0"
 function canonical (address)
    return address:gsub("^0000:", "")
