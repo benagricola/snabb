@@ -111,37 +111,35 @@ function run (args)
 
     local c = config.new()
 
-    pci.scan_devices()
-    for _, dev in ipairs(pci.devices) do
-        print(dev)
-    end
-
     config.app(c, "ddos", ddos.Detector, {config_file_path = opt.config_file_path})
 
     config.app(c, "vlanmux", vlan.VlanMux)
 
-    -- If this is a physical NIC then initialise 82599 driver
-    if nic_exists(opt.int_in) then
-        log_info("Input interface %s is physical device, initialising...", opt.int_in)
-        config.app(c, "int_in", intel.Intel1g, {
-            pciaddr = opt.int_in,
-        })
-        config.link(c, "int_in.tx -> vlanmux.trunk")
-
-    -- Otherwise check for a tun/tap device
-    elseif tuntap_exists(opt.int_in) then
+    -- If this is a physical NIC then initialise relevant driver
+    if tuntap_exists(opt.int_in) then
         log_info("Input interface %s is tun/tap device, initialising...", opt.int_in)
         config.app(c, "int_in", tap.Tap, opt.int_in)
         config.link(c, "int_in.output -> vlanmux.trunk")
 
-    -- Otherwise assume rawsocket
     else
-        log_info("Input interface %s is unknown device, initialising as RawSocket...", opt.int_in)
-        config.app(c, "int_in", raw.RawSocket, opt.int_in)
-        config.link(c, "int_in.tx -> vlanmux.trunk")
+
+        local dev = pci.device_info(opt.int_in)
+
+        if not dev.driver then
+            log_info("No driver available for PCI device %s", opt.int_in)
+        end
+
+        local driver = require(dev.driver)
+
+        log_info("Input interface %s is physical device, initialising...", opt.int_in)
+        config.app(c, "int_in", driver, {
+            pciaddr = dev.pciaddress,
+        })
     end
 
+
     if opt.in_vlan then
+        config.link(c, "int_in.tx -> vlanmux.trunk")
         for _, vlan in ipairs(opt.in_vlan) do
             -- Deal with native vlan (i.e. untagged)
             if vlan == 0 then
@@ -152,29 +150,32 @@ function run (args)
 
             config.link(c, "vlanmux." .. vlan ..  " -> ddos.input")
         end
+    else
+        config.link(c, "int_in.tx -> ddos.input")
     end
 
     if opt.int_out then
-        -- If this is a physical NIC then initialise 82599 driver
-        if nic_exists(opt.int_out) then
-            log_info("Output interface %s is physical device, initialising...", opt.int_out)
-            config.app(c, "int_out", intel.Intel1g, {
-                pciaddr = opt.int_out,
-            })
-            config.link(c, "ddos.output -> int_out.rx")
-        -- Otherwise check for a tun/tap device
-        elseif tuntap_exists(opt.int_out) then
-            log_info("Output interface %s is tun/tap device, initialising...", opt.int_out)
-            config.app(c, "int_out", raw.RawSocket, opt.int_out)
-            config.link(c, "ddos.output -> int_out.rx")
-        -- Otherwise assume rawsocket
-        else
-            log_info("Output interface %s is unknown device, initialising as RawSocket...", opt.int_out)
+        if tuntap_exists(opt.int_out) then
+            log_info("Input interface %s is tun/tap device, initialising...", opt.int_out)
             config.app(c, "int_out", tap.Tap, opt.int_out)
-            config.link(c, "ddos.output -> int_out.input")
+            config.link(c, "ddos.output -> int_out.rx")
 
+        else
+
+            local dev = pci.device_info(opt.int_out)
+
+            if not dev.driver then
+                log_info("No driver available for PCI device %s", opt.int_out)
+            end
+
+            local driver = require(dev.driver)
+
+            log_info("Output interface %s is physical device, initialising...", opt.int_out)
+            config.app(c, "int_out", driver, {
+                pciaddr = dev.pciaddress,
+            })
         end
-
+        config.link(c, "ddos.output -> int_out.rx")
     end
 
     engine.busywait = opt.busywait and true or false
