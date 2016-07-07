@@ -4,7 +4,7 @@ local S     = require("syscall")
 
 local lib   = require("core.lib")
 local json  = require("lib.json")
-local intel = require("apps.intel.intel_app")
+local intel = require("apps.intel.intel1g")
 local tap   = require("apps.tap.tap")
 local raw   = require("apps.socket.raw")
 local vlan  = require("apps.vlan.vlan")
