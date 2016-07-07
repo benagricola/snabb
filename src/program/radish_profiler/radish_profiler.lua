@@ -112,7 +112,10 @@ function run (args)
     local c = config.new()
 
     pci.scan_devices()
-    print(pci.devices)
+    for _, dev in ipairs(pci.devices) do
+        print(dev)
+    end
+
     config.app(c, "ddos", ddos.Detector, {config_file_path = opt.config_file_path})
 
     config.app(c, "vlanmux", vlan.VlanMux)
