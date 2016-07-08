@@ -189,7 +189,7 @@ function run (args)
             config.app(c, muxname, vlan.VlanMux)
 
             -- Configure interface -> vlanmux input
-            local linkspec = int_name .. ".output -> " .. muxname .. ".input"
+            local linkspec = int_name .. ".output -> " .. muxname .. ".trunk"
             log_info("Configuring input link %s", linkspec)
             config.link(c, linkspec)
 
