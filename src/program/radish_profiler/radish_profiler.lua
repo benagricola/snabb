@@ -169,8 +169,6 @@ function run (args)
 
     config.app(c, "ddos", ddos.Detector, {config_file_path = opt.config_file_path})
 
-    config.app(c, "vlanmux", vlan.VlanMux)
-
     -- Configure input interfaces, redirecting packets to vlanmux.trunk
     -- if in_vlan is set or passing directly to ddos.input if not.
     for id, interface in ipairs(opt.int_in) do
@@ -181,13 +179,30 @@ function run (args)
         end
 
         local linkspec = ""
+
+        -- Create an instance of vlanmux for each if, since it only allows
+        -- a single trunk input.
         if opt.in_vlan then
-            linkspec = int_name .. ".output -> vlanmux.trunk" .. id
+            local muxname = "vlanmux_" .. int_name
+            config.app(c, muxname, vlan.VlanMux)
+
+            for _, vlan in ipairs(opt.in_vlan) do
+                -- Deal with native vlan (i.e. untagged)
+                if vlan == 0 then
+                    vlan = "native"
+                else
+                    vlan = "vlan" .. vlan
+                end
+
+                local linkspec = muxname .. "." .. vlan .. " -> ddos.input"
+                log_info("Configuring vlan link %s", linkspec)
+                config.link(c, linkspec)
+            end
         else
             linkspec = int_name .. ".output -> ddos.input"
+            log_info("Configuring input link %s", linkspec)
+            config.link(c, linkspec)
         end
-        log_info("Configuring input link %s", linkspec)
-        config.link(c, linkspec)
     end
 
     -- Configure output interfaces, sourced from ddos.output
@@ -203,20 +218,6 @@ function run (args)
         config.link(c, linkspec)
     end
 
-    if opt.in_vlan then
-        for _, vlan in ipairs(opt.in_vlan) do
-            -- Deal with native vlan (i.e. untagged)
-            if vlan == 0 then
-                vlan = "native"
-            else
-                vlan = "vlan" .. vlan
-            end
-
-            local linkspec = "vlanmux." .. vlan .. " -> ddos.input"
-            log_info("Configuring vlan link %s", linkspec)
-            config.link(c, linkspec)
-        end
-    end
 
     engine.busywait = opt.busywait and true or false
     engine.configure(c)
