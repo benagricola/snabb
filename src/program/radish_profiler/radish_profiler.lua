@@ -115,7 +115,7 @@ function config_interface(c, interface)
     local ifname = "int_" .. int_ctr
 
     -- Handle tap/tun interfaces
-    if string.find("tap", interface) == 0 or string.find("tun", interface) == 0 then
+    if string.find("tap", interface) == 1 or string.find("tun", interface) == 1 then
         log_info("Interface %s is tap/tun...", interface)
         config.app(c, ifname, tap.Tap, interface)
         return ifname
