@@ -173,7 +173,7 @@ function run (args)
 
     -- Configure input interfaces, redirecting packets to vlanmux.trunk
     -- if in_vlan is set or passing directly to ddos.input if not.
-    for _, interface in ipairs(opt.int_in) do
+    for id, interface in ipairs(opt.int_in) do
         local int_name = config_interface(c, interface)
         if not int_name then
             log_critical("Unable to configure app for interface %s!", interface)
@@ -182,7 +182,7 @@ function run (args)
 
         local linkspec = ""
         if opt.in_vlan then
-            linkspec = int_name .. ".output -> vlanmux.trunk"
+            linkspec = int_name .. ".output -> vlanmux.trunk" .. id
         else
             linkspec = int_name .. ".output -> ddos.input"
         end
