@@ -134,6 +134,8 @@ function run (args)
         config.app(c, "int_in", driver.driver, {
             pciaddr = dev.pciaddress,
             master  = true,
+            rxq = 0,
+            txq = 0,
         })
     end
 
