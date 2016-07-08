@@ -177,11 +177,14 @@ function run (args)
             main.exit(1)
         end
 
+        local linkspec = ""
         if opt.in_vlan then
-            config.link(c, int_name .. ".output -> vlanmux.trunk")
+            linkspec = int_name .. ".output -> vlanmux.trunk"
         else
-            config.link(c, int_name .. ".output -> ddos.input")
+            linkspec = int_name .. ".output -> ddos.input"
         end
+        log_info("Configuring input link %s", linkspec)
+        config.link(c, linkspec)
     end
 
     -- Configure output interfaces, sourced from ddos.output
@@ -192,7 +195,9 @@ function run (args)
             main.exit(1)
         end
 
-        config.link(c, "ddos.output -> " .. int_name .. ".input")
+        local linkspec = "ddos.output -> " .. int_name .. ".input"
+        log_info("Configuring output link %s", linkspec)
+        config.link(c, linkspec)
     end
 
     if opt.in_vlan then
@@ -204,7 +209,9 @@ function run (args)
                 vlan = "vlan" .. vlan
             end
 
-            config.link(c, "vlanmux." .. vlan ..  " -> ddos.input")
+            local linkspec = "vlanmux." .. vlan .. " -> ddos.input"
+            log_info("Configuring vlan link %s", linkspec)
+            config.link(c, linkspec)
         end
     end
 
