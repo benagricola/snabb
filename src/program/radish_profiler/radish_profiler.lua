@@ -135,7 +135,6 @@ function run (args)
             pciaddr = dev.pciaddress,
             master  = true,
             rxq = 0,
-            txq = 0,
         })
     end
 
