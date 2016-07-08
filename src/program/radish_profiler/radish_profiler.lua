@@ -106,6 +106,10 @@ function run (args)
     local opt = parse_args(args)
 
     -- Bind to a core
+    if opt.core then
+        log_info("Binding to core %d", opt.core)
+    end
+
     S.sched_setaffinity(nil, {opt.core or 0})
 
     local c = config.new()
