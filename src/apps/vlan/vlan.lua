@@ -107,6 +107,8 @@ function VlanMux:push()
    local noutputs = #self.output
    if noutputs > 0 then
       for name, l in pairs(self.input) do
+         print(name)
+         print(l)
          local maxoutput = link.max
          -- find out max number of packets we can put out an interface
          -- this is kind of bad because we limit ourselves by the interface with
