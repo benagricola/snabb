@@ -185,7 +185,7 @@ function run (args)
         if opt.in_vlan then
 
 
-            local muxname = "vlanmux_" .. int_name
+            local muxname = "vmux" .. int_name
             config.app(c, muxname, vlan.VlanMux)
 
             -- Configure interface -> vlanmux input
