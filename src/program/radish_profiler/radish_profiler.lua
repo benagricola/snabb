@@ -129,16 +129,17 @@ function config_interface(c, interface)
         local model = dev.model
         local driver_module = require(dev.driver)
 
+        log_info("Interface driver is %s", model)
 
         if model == 'i210' or model == 'i350' then
             log_info("Interface %s is Intel1g...", interface)
-            config.app(c, ifname, driver.Intel1g, {
+            config.app(c, ifname, driver_module.Intel1g, {
                 pciaddr = interface,
                 rxq = 0,
             })
         else
             log_info("Interface %s is Intel82599...", interface)
-            config.app(c, ifname, driver.Intel82599, {
+            config.app(c, ifname, driver_module.Intel82599, {
                 pciaddr = interface,
                 rxq = 0,
             })
