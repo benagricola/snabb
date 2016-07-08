@@ -109,7 +109,7 @@ function parse_args(args)
     return opt
 end
 
-function config_interface(interface)
+function config_interface(c, interface)
     local ifname = "int_"..interface
 
     -- Handle tap/tun interfaces
@@ -171,7 +171,7 @@ function run (args)
     -- Configure input interfaces, redirecting packets to vlanmux.trunk
     -- if in_vlan is set or passing directly to ddos.input if not.
     for _, interface in ipairs(opt.int_in) do
-        local int_name = config_interface(interface)
+        local int_name = config_interface(c, interface)
         if not int_name then
             log_critical("Unable to configure app for interface %s!", interface)
             main.exit(1)
@@ -186,7 +186,7 @@ function run (args)
 
     -- Configure output interfaces, sourced from ddos.output
     for _, interface in ipairs(opt.int_out) do
-        local int_name = config_interface(interface)
+        local int_name = config_interface(c, interface)
         if not int_name then
             log_critical("Unable to configure app for interface %s!", interface)
             main.exit(1)
