@@ -122,6 +122,7 @@ function VlanMux:push()
                local p = receive(l)
                local ethertype = cast("uint16_t*", p.data + o_ethernet_ethertype)[0]
 
+               print(string.find("trunk", name))
                if string.find("trunk", name) == 0 then -- trunk
                   -- check for ethertype 0x8100 (802.1q VLAN tag)
                   if ethertype == self.dot1q_tpid then
@@ -138,7 +139,6 @@ function VlanMux:push()
                elseif name == "native" then
                   self:transmit(self.output.trunk, p)
                else -- some vlanX interface
-                  print(name)
                   local vid = tonumber(string.sub(name, 5))
                   push_tag(p, build_tag(vid))
                   self:transmit(self.output.trunk, p)
