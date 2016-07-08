@@ -140,7 +140,7 @@ function run (args)
 
 
     if opt.in_vlan then
-        config.link(c, "int_in.tx -> vlanmux.trunk")
+        config.link(c, "int_in.output -> vlanmux.trunk")
         for _, vlan in ipairs(opt.in_vlan) do
             -- Deal with native vlan (i.e. untagged)
             if vlan == 0 then
@@ -152,14 +152,14 @@ function run (args)
             config.link(c, "vlanmux." .. vlan ..  " -> ddos.input")
         end
     else
-        config.link(c, "int_in.tx -> ddos.input")
+        config.link(c, "int_in.output -> ddos.input")
     end
 
     if opt.int_out then
         if tuntap_exists(opt.int_out) then
             log_info("Input interface %s is tun/tap device, initialising...", opt.int_out)
             config.app(c, "int_out", tap.Tap, opt.int_out)
-            config.link(c, "ddos.output -> int_out.rx")
+            config.link(c, "ddos.output -> int_out.input")
 
         else
 
@@ -176,7 +176,7 @@ function run (args)
                 pciaddr = dev.pciaddress,
             })
         end
-        config.link(c, "ddos.output -> int_out.rx")
+        config.link(c, "ddos.output -> int_out.input")
     end
 
     engine.busywait = opt.busywait and true or false
