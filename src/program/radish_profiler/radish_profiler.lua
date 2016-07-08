@@ -5,7 +5,6 @@ local S     = require("syscall")
 local pci   = require("lib.hardware.pci")
 local lib   = require("core.lib")
 local json  = require("lib.json")
-local intel = require("apps.intel.intel1g")
 local tap   = require("apps.tap.tap")
 local raw   = require("apps.socket.raw")
 local vlan  = require("apps.vlan.vlan")
@@ -132,7 +131,7 @@ function run (args)
         local driver = require(dev.driver)
 
         log_info("Input interface %s is physical device, initialising...", opt.int_in)
-        config.app(c, "int_in", driver, {
+        config.app(c, "int_in", driver.driver, {
             pciaddr = dev.pciaddress,
         })
     end
