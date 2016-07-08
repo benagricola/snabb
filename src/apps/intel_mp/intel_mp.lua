@@ -172,6 +172,7 @@ EEC       0x00010 -            RW EEPROM-Mode Control Register
 }
 
 local Intel = { }
+driver = Intel
 function Intel:new (arg)
    local conf = config.parse_app_arg(arg)
    local self = setmetatable({
