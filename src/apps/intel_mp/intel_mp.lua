@@ -172,7 +172,6 @@ EEC       0x00010 -            RW EEPROM-Mode Control Register
 }
 
 local Intel = { }
-driver = Intel1g
 function Intel:new (arg)
    local conf = config.parse_app_arg(arg)
    local self = setmetatable({
@@ -683,3 +682,5 @@ function Intel82599:init ()
       self:rss_enable()
    end
 end
+
+driver = Intel1g
