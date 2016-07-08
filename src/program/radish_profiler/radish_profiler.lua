@@ -109,8 +109,11 @@ function parse_args(args)
     return opt
 end
 
+local int_ctr = 0
+
 function config_interface(c, interface)
-    local ifname = "int_"..interface
+    local ifname = "int_" .. int_ctr
+    int_ctr = int_ctr + 1
 
     -- Handle tap/tun interfaces
     if string.find("tap", interface) == 0 or string.find("tun", interface) == 0 then
