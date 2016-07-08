@@ -105,6 +105,7 @@ end
 function run (args)
     local opt = parse_args(args)
 
+    print(opt.core)
     -- Bind to a core
     if opt.core then
         log_info("Binding to core %d", opt.core)
