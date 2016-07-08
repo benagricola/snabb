@@ -126,7 +126,7 @@ function config_interface(c, interface)
             log_info("No driver available for PCI device %s, vendor %s", interface, dev.vendor or 'Unknown')
             return nil
         end
-        local model = dev.model
+        local model = dev.device
         local driver_module = require(dev.driver)
 
         log_info("Interface driver is %s", model)
