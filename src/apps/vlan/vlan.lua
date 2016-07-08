@@ -107,8 +107,6 @@ function VlanMux:push()
    local noutputs = #self.output
    if noutputs > 0 then
       for name, l in pairs(self.input) do
-         print(name)
-         print(l)
          local maxoutput = link.max
          -- find out max number of packets we can put out an interface
          -- this is kind of bad because we limit ourselves by the interface with
@@ -124,7 +122,7 @@ function VlanMux:push()
                local p = receive(l)
                local ethertype = cast("uint16_t*", p.data + o_ethernet_ethertype)[0]
 
-               if name == "trunk" then -- trunk
+               if string.find("trunk", name) == 0 then -- trunk
                   -- check for ethertype 0x8100 (802.1q VLAN tag)
                   if ethertype == self.dot1q_tpid then
                      -- dig out TCI field
