@@ -113,7 +113,6 @@ local int_ctr = 0
 
 function config_interface(c, interface)
     local ifname = "int_" .. int_ctr
-    int_ctr = int_ctr + 1
 
     -- Handle tap/tun interfaces
     if string.find("tap", interface) == 0 or string.find("tun", interface) == 0 then
@@ -136,16 +135,17 @@ function config_interface(c, interface)
             log_info("Interface %s is Intel1g...", interface)
             config.app(c, ifname, driver_module.Intel1g, {
                 pciaddr = interface,
-                rxq = 0,
+                rxq = int_ctr,
             })
         else
             log_info("Interface %s is Intel82599...", interface)
             config.app(c, ifname, driver_module.Intel82599, {
                 pciaddr = interface,
-                rxq = 0,
+                rxq = int_ctr,
             })
         end
 
+        int_ctr = int_ctr + 1
         return ifname
     end
 
