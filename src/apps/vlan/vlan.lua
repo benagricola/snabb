@@ -138,6 +138,7 @@ function VlanMux:push()
                elseif name == "native" then
                   self:transmit(self.output.trunk, p)
                else -- some vlanX interface
+                  print(name)
                   local vid = tonumber(string.sub(name, 5))
                   push_tag(p, build_tag(vid))
                   self:transmit(self.output.trunk, p)
