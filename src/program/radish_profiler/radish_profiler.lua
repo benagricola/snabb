@@ -129,8 +129,6 @@ function config_interface(c, interface)
         local device = dev.device
         local driver_module = require(dev.driver)
 
-        log_info("Interface driver is %s", model)
-
         if device == '0x1521' or device == '0x1533' or device == '0x157b' then
             log_info("Interface %s is Intel1g...", interface)
             config.app(c, ifname, driver_module.Intel1g, {
