@@ -183,9 +183,18 @@ function run (args)
         -- Create an instance of vlanmux for each if, since it only allows
         -- a single trunk input.
         if opt.in_vlan then
+
+
             local muxname = "vlanmux_" .. int_name
             config.app(c, muxname, vlan.VlanMux)
 
+            -- Configure interface -> vlanmux input
+            local linkspec = int_name .. ".output -> " .. muxname .. ".input"
+            log_info("Configuring input link %s", linkspec)
+            config.link(c, linkspec)
+
+
+            -- Configure vlanmux.output -> ddos.input
             for _, vlan in ipairs(opt.in_vlan) do
                 -- Deal with native vlan (i.e. untagged)
                 if vlan == 0 then
