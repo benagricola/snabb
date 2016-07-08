@@ -148,7 +148,8 @@ function config_interface(c, interface)
 
     -- Assume anything still here is a RawSocket device
     log_info("Interface %s is RawSocket...", interface)
-    return raw.RawSocket
+    config.app(c, ifname, raw.RawSocket, interface)
+    return ifname
 end
 
 function run (args)
