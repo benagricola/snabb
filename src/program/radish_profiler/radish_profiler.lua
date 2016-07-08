@@ -133,7 +133,6 @@ function run (args)
         log_info("Input interface %s is physical device, initialising...", opt.int_in)
         config.app(c, "int_in", driver.driver, {
             pciaddr = dev.pciaddress,
-            master  = true,
             rxq = 0,
         })
     end
