@@ -109,13 +109,13 @@ function parse_args(args)
     return opt
 end
 
-local int_ctr = 0
+local int_ctr = 1
 
 function config_interface(c, interface)
     local ifname = "int_" .. int_ctr
 
     -- Handle tap/tun interfaces
-    if string.find("tap", interface) == 1 or string.find("tun", interface) == 1 then
+    if string.find(interface, "tap") == 1 or string.find(interface, "tun") == 1 then
         log_info("Interface %s is tap/tun...", interface)
         config.app(c, ifname, tap.Tap, interface)
         return ifname

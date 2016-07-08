@@ -122,9 +122,7 @@ function VlanMux:push()
                local p = receive(l)
                local ethertype = cast("uint16_t*", p.data + o_ethernet_ethertype)[0]
 
-               print(name)
-               print(string.find("trunk", name))
-               if string.find("trunk", name) == 1 then -- trunk
+               if string.find(name, "trunk") == 1 then -- trunk
                   -- check for ethertype 0x8100 (802.1q VLAN tag)
                   if ethertype == self.dot1q_tpid then
                      -- dig out TCI field
