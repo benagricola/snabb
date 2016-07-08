@@ -61,13 +61,19 @@ function parse_args(args)
     local opt = {
         report = false,
         config_file_path = "/etc/radish/profiler.json",
+        int_in  = {},
+        int_out = {},
     }
 
     local handlers = {}
     function handlers.h (arg) print(usage) main.exit(1) end
     function handlers.c (arg) opt.config_file_path = arg end
-    function handlers.i (arg) opt.int_in           = arg end
-    function handlers.o (arg) opt.int_out          = arg end
+    function handlers.i (arg)
+        table.insert(opt.int_in, arg)
+    end
+    function handlers.o (arg)
+        table.insert(opt.int_out, arg)
+    end
     function handlers.g (arg) opt.group            = arg end
     function handlers.n (arg) opt.core             = arg end
     function handlers.b (arg) opt.busywait         = true end
@@ -81,9 +87,13 @@ function parse_args(args)
 
     args = lib.dogetopt(args, handlers, "hc:i:o:g:c:n:b", long_opts)
 
-    if not opt.int_in then
+    if #opt.int_in < 1 then
         log_critical("Missing argument -i")
         main.exit(1)
+    end
+
+    if #opt.int_out < 1 then
+        log_warn("Not forwarding captured traffic...")
     end
 
     if not file_exists(opt.config_file_path) then
@@ -92,14 +102,53 @@ function parse_args(args)
     end
 
     if opt.in_vlan then
-        log_info("Accepting VLAN tags %s from input interface %s", table.concat(opt.in_vlan,", "), opt.int_in)
+        log_info("Accepting VLAN tags %s from input interfaces %s", table.concat(opt.in_vlan,", "), table.concat(opt.int_in, ", "))
     end
 
-    if not opt.int_out then
-        log_info("Not forwarding captured traffic...")
-    end
 
     return opt
+end
+
+function config_interface(interface)
+    local ifname = "int_"..interface
+
+    -- Handle tap/tun interfaces
+    if string.find("tap", interface) == 0 or string.find("tun", interface) == 0 then
+        log_info("Interface %s is tap/tun...", interface)
+        config.app(c, ifname, tap.Tap, interface)
+        return ifname
+    end
+
+    -- Handle hardware interfaces
+    if pci.qualified(interface) then
+        local dev = pci.device_info(interface)
+        if not dev.driver then
+            log_info("No driver available for PCI device %s, vendor %s", interface, dev.vendor or 'Unknown')
+            return nil
+        end
+        local driver_module = require(dev.driver)
+
+
+        if model == 'i210' or model == 'i350' then
+            log_info("Interface %s is Intel1g...", interface)
+            config.app(c, ifname, driver.Intel1g, {
+                pciaddr = interface,
+                rxq = 0,
+            })
+        else
+            log_info("Interface %s is Intel82599...", interface)
+            config.app(c, ifname, driver.Intel82599, {
+                pciaddr = interface,
+                rxq = 0,
+            })
+        end
+
+        return ifname
+    end
+
+    -- Assume anything still here is a RawSocket device
+    log_info("Interface %s is RawSocket...", interface)
+    return raw.RawSocket
 end
 
 function run (args)
@@ -118,32 +167,34 @@ function run (args)
 
     config.app(c, "vlanmux", vlan.VlanMux)
 
-    -- If this is a physical NIC then initialise relevant driver
-    if tuntap_exists(opt.int_in) then
-        log_info("Input interface %s is tun/tap device, initialising...", opt.int_in)
-        config.app(c, "int_in", tap.Tap, opt.int_in)
-        config.link(c, "int_in.output -> vlanmux.trunk")
-
-    else
-
-        local dev = pci.device_info(opt.int_in)
-
-        if not dev.driver then
-            log_info("No driver available for PCI device %s", opt.int_in)
+    -- Configure input interfaces, redirecting packets to vlanmux.trunk
+    -- if in_vlan is set or passing directly to ddos.input if not.
+    for _, interface in ipairs(opt.int_in) do
+        local int_name = config_interface(interface)
+        if not int_name then
+            log_critical("Unable to configure app for interface %s!", interface)
+            main.exit(1)
         end
 
-        local driver = require(dev.driver)
-
-        log_info("Input interface %s is physical device, initialising...", opt.int_in)
-        config.app(c, "int_in", driver.driver, {
-            pciaddr = dev.pciaddress,
-            rxq = 0,
-        })
+        if opt.in_vlan then
+            config.link(c, int_name .. ".output -> vlanmux.trunk")
+        else
+            config.link(c, int_name .. ".output -> ddos.input")
+        end
     end
 
+    -- Configure output interfaces, sourced from ddos.output
+    for _, interface in ipairs(opt.int_out) do
+        local int_name = config_interface(interface)
+        if not int_name then
+            log_critical("Unable to configure app for interface %s!", interface)
+            main.exit(1)
+        end
+
+        config.link(c, "ddos.output -> " .. int_name .. ".input")
+    end
 
     if opt.in_vlan then
-        config.link(c, "int_in.output -> vlanmux.trunk")
         for _, vlan in ipairs(opt.in_vlan) do
             -- Deal with native vlan (i.e. untagged)
             if vlan == 0 then
@@ -154,32 +205,6 @@ function run (args)
 
             config.link(c, "vlanmux." .. vlan ..  " -> ddos.input")
         end
-    else
-        config.link(c, "int_in.output -> ddos.input")
-    end
-
-    if opt.int_out then
-        if tuntap_exists(opt.int_out) then
-            log_info("Input interface %s is tun/tap device, initialising...", opt.int_out)
-            config.app(c, "int_out", tap.Tap, opt.int_out)
-            config.link(c, "ddos.output -> int_out.input")
-
-        else
-
-            local dev = pci.device_info(opt.int_out)
-
-            if not dev.driver then
-                log_info("No driver available for PCI device %s", opt.int_out)
-            end
-
-            local driver = require(dev.driver)
-
-            log_info("Output interface %s is physical device, initialising...", opt.int_out)
-            config.app(c, "int_out", driver, {
-                pciaddr = dev.pciaddress,
-            })
-        end
-        config.link(c, "ddos.output -> int_out.input")
     end
 
     engine.busywait = opt.busywait and true or false

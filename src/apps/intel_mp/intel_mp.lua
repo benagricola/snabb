@@ -683,4 +683,3 @@ function Intel82599:init ()
    end
 end
 
-driver = Intel1g
