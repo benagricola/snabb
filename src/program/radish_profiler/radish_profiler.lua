@@ -40,17 +40,6 @@ local function file_exists(path)
    return stat and stat.isreg
 end
 
-local function dir_exists(path)
-   local stat = S.stat(path)
-   return stat and stat.isdir
-end
-
-local function nic_exists(pci_addr)
-   local devices="/sys/bus/pci/devices"
-   return dir_exists(("%s/%s"):format(devices, pci_addr)) or
-      dir_exists(("%s/0000:%s"):format(devices, pci_addr))
-end
-
 local function tuntap_exists(device)
     -- Check for tun_flags, this exists if the device is tun/tap
     local devices="/sys/devices/virtual/net/%s/tun_flags"
