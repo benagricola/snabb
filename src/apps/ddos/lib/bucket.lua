@@ -83,7 +83,8 @@ function Bucket:new(cfg)
     end
 
     -- Make sure we have a threshold of some sort set
-    assert(self.pps_burst_rate or self.bps_burst_rate or self.pps_rate or self.bps_rate, "No Threshold rates set for bucket, please set one!")
+    -- 20/07/16: Not a requirement now, buckets may not be violatable to negatively match traffic
+    -- assert(self.pps_burst_rate or self.bps_burst_rate or self.pps_rate or self.bps_rate, "No Threshold rates set for bucket, please set one!")
 
     -- Calculate Exponent value for EWMA
     self.exp_value = math_exp(-self.period/self.average_period)
