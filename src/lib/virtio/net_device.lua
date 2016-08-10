@@ -53,7 +53,6 @@ local invalid_header_id = 0xffff
 
 --]]
 local supported_features = C.VIRTIO_F_ANY_LAYOUT +
-                           C.VIRTIO_RING_F_INDIRECT_DESC +
                            C.VIRTIO_NET_F_CTRL_VQ +
                            C.VIRTIO_NET_F_MQ +
                            C.VIRTIO_NET_F_CSUM
@@ -69,7 +68,7 @@ local max_virtq_pairs = 16
 
 VirtioNetDevice = {}
 
-function VirtioNetDevice:new(owner, disable_mrg_rxbuf)
+function VirtioNetDevice:new(owner, disable_mrg_rxbuf, disable_indirect_desc)
    assert(owner)
    local o = {
       owner = owner,
@@ -100,10 +99,15 @@ function VirtioNetDevice:new(owner, disable_mrg_rxbuf)
    self.hdr_type = virtio_net_hdr_type
    self.hdr_size = virtio_net_hdr_size
 
-   if disable_mrg_rxbuf then
-      self.supported_features = supported_features
-   else
-      self.supported_features = supported_features + C.VIRTIO_NET_F_MRG_RXBUF
+   self.supported_features = supported_features
+
+   if not disable_mrg_rxbuf then
+      self.supported_features = self.supported_features
+         + C.VIRTIO_NET_F_MRG_RXBUF
+   end
+   if not disable_indirect_desc then
+      self.supported_features = self.supported_features
+         + C.VIRTIO_RING_F_INDIRECT_DESC
    end
 
    return o
@@ -162,11 +166,9 @@ function VirtioNetDevice:rx_packet_end(header_id, total_size, rx_p)
             rx_p.length - self.rx_hdr_csum_start,
             self.rx_hdr_csum_offset)
       end
-      self.owner:rx_callback(rx_p)
       link.transmit(l, rx_p)
    else
       debug("droprx", "len", rx_p.length)
-      self.owner:rxdrop_callback(rx_p)
       packet.free(rx_p)
    end
    self.virtq[self.ring_id]:put_buffer(header_id, total_size)
@@ -254,7 +256,6 @@ function VirtioNetDevice:tx_buffer_add(tx_p, addr, len)
 end
 
 function VirtioNetDevice:tx_packet_end(header_id, total_size, tx_p)
-   self.owner:tx_callback(tx_p)
    packet.free(tx_p)
    self.virtq[self.ring_id]:put_buffer(header_id, total_size)
 end
@@ -324,7 +325,6 @@ end
 function VirtioNetDevice:tx_packet_end_mrg_rxbuf(header_id, total_size, tx_p)
    -- free the packet only when all its data is processed
    if self.tx.finished then
-      self.owner:tx_callback(tx_p)
       packet.free(tx_p)
       self.tx.p = nil
       self.tx.data_sent = nil

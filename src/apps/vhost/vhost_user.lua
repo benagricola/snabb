@@ -13,9 +13,7 @@ local lib       = require("core.lib")
 local link      = require("core.link")
 local main      = require("core.main")
 local memory    = require("core.memory")
-local counter   = require("core.counter")
 local pci       = require("lib.hardware.pci")
-local ethernet  = require("lib.protocol.ethernet")
 local net_device= require("lib.virtio.net_device")
 local timer     = require("core.timer")
 local ffi       = require("ffi")
@@ -28,12 +26,6 @@ require("apps.vhost.vhost_user_h")
 assert(ffi.sizeof("struct vhost_user_msg") == 276, "ABI error")
 
 VhostUser = {}
-
-local provided_counters = {
-   'type', 'dtime',
-   'rxbytes', 'rxpackets', 'rxmcast', 'rxdrop',
-   'txbytes', 'txpackets', 'txmcast'
-}
 
 function VhostUser:new (args)
    local o = { state = 'init',
@@ -52,7 +44,9 @@ function VhostUser:new (args)
       )
    }
    self = setmetatable(o, {__index = VhostUser})
-   self.dev = net_device.VirtioNetDevice:new(self, args.disable_mrg_rxbuf)
+   self.dev = net_device.VirtioNetDevice:new(self,
+                                             args.disable_mrg_rxbuf,
+                                             args.disable_indirect_desc)
    if args.is_server then
       self.listen_socket = C.vhost_user_listen(self.socket_path)
       assert(self.listen_socket >= 0)
@@ -60,13 +54,6 @@ function VhostUser:new (args)
    else
       self.qemu_connect = self.client_connect
    end
-   -- initialize counters
-   self.counters = {}
-   for _, name in ipairs(provided_counters) do
-      self.counters[name] = counter.open(name)
-   end
-   counter.set(self.counters.type, 0x1001) -- Virtual interface
-   counter.set(self.counters.dtime, C.get_unix_time())
    return self
 end
 
@@ -83,9 +70,6 @@ function VhostUser:stop()
    self:free_mem_table()
 
    if self.link_down_proc then self.link_down_proc() end
-
-   -- delete counters
-   for name, _ in pairs(self.counters) do counter.delete(name) end
 end
 
 function VhostUser:pull ()
@@ -102,22 +86,6 @@ function VhostUser:push ()
    if self.vhost_ready then
       self.dev:poll_vring_transmit()
    end
-end
-
-function VhostUser:tx_callback (p)
-   counter.add(self.counters.txbytes, packet.length(p))
-   counter.add(self.counters.txpackets)
-   counter.add(self.counters.txmcast, ethernet:n_mcast(packet.data(p)))
-end
-
-function VhostUser:rx_callback (p)
-   counter.add(self.counters.rxbytes, packet.length(p))
-   counter.add(self.counters.rxpackets)
-   counter.add(self.counters.rxmcast, ethernet:n_mcast(packet.data(p)))
-end
-
-function VhostUser:rxdrop_callback (p)
-   counter.add(self.counters.rxdrop)
 end
 
 -- Try to connect to QEMU.
