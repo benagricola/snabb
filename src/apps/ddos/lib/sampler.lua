@@ -9,7 +9,6 @@ local log_debug     = log.debug
 local os_time       = require("os").time
 local constants     = require("apps.lwaftr.constants")
 local lwutil        = require("apps.lwaftr.lwutil")
-local counter       = require("core.counter")
 local packet        = require("core.packet")
 local math          = require("math")
 local math          = require("math")
@@ -325,6 +324,7 @@ function SampleSet:new(cfg)
         dst_hosts          = Sample:new(cfg.dst_hosts or 0.6, cfg.dst_hosts_limit or 1000), -- Limit to 1000 possible Destination IPs
         dst_subnets        = Sample:new(cfg.dst_subnets or 0.6, cfg.dst_subnets_limit or 100),  -- Limit to 100 possible Destination Subnets
         dst_ports          = Sample:new(cfg.dst_ports or 0.6, cfg.dst_ports_limit or 1000), -- Limit to 1000 possible Destination Ports
+        packet_sizes       = Sample:new(cfg.packet_sizes or 0.6, cfg.packet_sizes_limit or 1000), -- Limit to 1000 possible Packet Sizes
         data               = {},
         uuid               = uuid(), -- Add a UUID to each sample set for unique referencing in external programs
     }
@@ -352,7 +352,8 @@ function SampleSet:sample(p)
         self.min_packet_size = packet_length
     end
 
-    local received_length = p.length
+    self.packet_sizes:value(packet_length)
+
     local ethertype       = get_ethertype(p)
     local e_payload       = get_ethernet_payload(p)
 
@@ -372,7 +373,7 @@ function SampleSet:sample(p)
 
         -- Check received data > 60 and matches length in IP Header
         local expected_length = get_ipv4_total_length(e_payload)
-        valid_ip_length = (expected_length + ethernet_header_size) ~= received_length and received_length > 60
+        valid_ip_length = (expected_length + ethernet_header_size) ~= packet_length and packet_length > 60
 
         -- Parse IPv4 Flags
         local flags = get_ipv4_flags(e_payload)

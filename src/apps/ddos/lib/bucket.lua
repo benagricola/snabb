@@ -13,6 +13,7 @@ local log_debug      = log.debug
 local log_num_prefix = log.num_prefix
 local string         = require("string")
 local string_rep     = string.rep
+local shm            = require("core.shm")
 local counter        = require("core.counter")
 local math           = require("math")
 local math_exp       = math.exp
@@ -56,16 +57,18 @@ function Bucket:new(cfg)
         sample_rate    = cfg.sample_rate or 1000, -- Sample every 1000 packets when violated, by default
         avg_pps        = 0, -- Used for calculations, counters are integers, this needs to be a float
         avg_bps        = 0, -- Used for calculations, counters are integers, this needs to be a float
-        counters       = {
-            pps           = open_counter(cfg.name, 'pps'),
-            bps           = open_counter(cfg.name, 'bps'),
-            avg_pps       = open_counter(cfg.name, 'avg_pps'),
-            avg_bps       = open_counter(cfg.name, 'avg_bps'),
-            peak_pps      = open_counter(cfg.name, 'peak_pps'),
-            peak_bps      = open_counter(cfg.name, 'peak_bps'),
-            total_packets = open_counter(cfg.name, 'total_packets'),
-            total_bits    = open_counter(cfg.name, 'total_bits'),
-        },
+        counters       = shm.create_frame(
+        "bucket/"..cfg.name,
+        {
+            pps           = {counter, 0},
+            bps           = {counter, 0},
+            avg_pps       = {counter, 0},
+            avg_bps       = {counter, 0},
+            peak_pps      = {counter, 0},
+            peak_bps      = {counter, 0},
+            total_packets = {counter, 0},
+            total_bits    = {counter, 0},
+        }),
         cur_packets    = 0,
         cur_bits       = 0,
         last_calc      = app_now(), -- Set so first calculation works
