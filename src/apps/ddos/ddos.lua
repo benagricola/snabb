@@ -186,7 +186,10 @@ function Detector:push()
     local output = self.output.output
     for _, l in ipairs(input) do
         for _ = 1, link_nreadable(l) do
-            self:process_packet(l)
+            -- Receive packet
+            local p = link_receive(l)
+
+            self:process_packet(p)
 
             -- Forward packet to any output interfaces
             if output then
@@ -206,12 +209,9 @@ end
 
 -- Processes a single received packet. Classify it by defined rules and place
 -- into a bucket.
-function Detector:process_packet(i)
+function Detector:process_packet(p)
     local classifier = self.classifier
     local buckets    = self.buckets
-
-    -- Parse packet
-    local p          = link_receive(i)
 
     -- Check packet against BPF rules
     local bucket_id = classifier:match(p)
