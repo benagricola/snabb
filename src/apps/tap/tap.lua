@@ -54,7 +54,8 @@ end
 
 function Tap:push ()
    local l = self.input.input
-   while not link.empty(l) do
+
+   for _ = 1, link.nreadable(l) do
       -- The socket write might of blocked so don't dequeue the packet from the link
       -- until the write has completed.
       local p = link.front(l)
