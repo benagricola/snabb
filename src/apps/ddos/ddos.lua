@@ -1,32 +1,35 @@
 module(..., package.seeall)
 
-local S             = require("syscall")
+local S              = require("syscall")
 
-local app           = require("core.app")
-local app_now       = app.now
-local log           = require("lib.log")
-local log_info      = log.info
-local log_warn      = log.warn
-local log_error     = log.error
-local log_critical  = log.critical
-local log_debug     = log.debug
-local ffi           = require("ffi")
-local ffi_istype    = ffi.istype
-local ffi_typeof    = ffi.typeof
-local link          = require("core.link")
-local link_receive  = link.receive
-local link_empty    = link.empty
-local os            = require("os")
-local os_time       = os.time
-local io            = require("io")
-local io_open       = io.open
-local packet        = require("core.packet")
-local packet_free   = packet.free
-local json          = require("lib.json")
-local json_decode   = json.decode
-local msgpack       = require("lib.msgpack")
-local m_pack        = msgpack.pack
-local m_unpack      = msgpack.unpack
+local app            = require("core.app")
+local app_now        = app.now
+local log            = require("lib.log")
+local log_info       = log.info
+local log_warn       = log.warn
+local log_error      = log.error
+local log_critical   = log.critical
+local log_debug      = log.debug
+local ffi            = require("ffi")
+local ffi_istype     = ffi.istype
+local ffi_typeof     = ffi.typeof
+local link           = require("core.link")
+local link_nreadable = link.nreadable
+local link_receive   = link.receive
+local link_transmit  = link.transmit
+local link_empty     = link.empty
+local os             = require("os")
+local os_time        = os.time
+local io             = require("io")
+local io_open        = io.open
+local packet         = require("core.packet")
+local packet_free    = packet.free
+local packet_clone   = packet.clone
+local json           = require("lib.json")
+local json_decode    = json.decode
+local msgpack        = require("lib.msgpack")
+local m_pack         = msgpack.pack
+local m_unpack       = msgpack.unpack
 
 local classifier = require("apps.ddos.classifiers.pflua")
 local buckets    = require("apps.ddos.lib.buckets")
@@ -179,9 +182,19 @@ end
 
 -- This can be thought of as the application loop
 function Detector:push()
-    for _, l in ipairs(self.input) do
-        while not link_empty(l) do
+    local input  = self.input
+    local output = self.output.output
+    for _, l in ipairs(input) do
+        for _ = 1, link_nreadable(l) do
             self:process_packet(l)
+
+            -- Forward packet to any output interfaces
+            if output then
+                link_transmit(output, packet_clone(p))
+            end
+
+            -- Free packet
+            packet_free(p)
         end
     end
 
@@ -205,8 +218,6 @@ function Detector:process_packet(i)
 
     -- If packet didn't match a rule (no bucket returned), ignore
     if not bucket_id then
-        -- Free packet
-        packet_free(p)
         return
     end
 
@@ -216,8 +227,7 @@ function Detector:process_packet(i)
     -- TODO: If rule is in violation, log packet?
     -- TODO: Calculate attacked host or subnet?
 
-    -- Free packet
-    packet_free(p)
+    return
 end
 
 
