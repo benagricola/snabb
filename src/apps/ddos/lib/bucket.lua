@@ -285,7 +285,7 @@ function Bucket:packed()
     local counters = {}
 
     -- Grab counter values as of now
-    for counter in self.counters do
+    for counter in pairs(self.counters) do
         counters[counter] = self:get_counter(counter)
     end
 
