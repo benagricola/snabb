@@ -71,12 +71,13 @@ end
 
 -- Get bucket in 'packable' format (i.e. no functions, no weird data)
 function Buckets:get_buckets()
-    local buckets = {}
-    for bucket in self.buckets do
-        buckets[bucket.name] = bucket:packed()
+    local bucket_count = self.bucket_count
+    local bucket_packed = {}
+    for i = 1, bucket_count do
+        bucket_packed[i] = self.buckets[i]:packed()
     end
 
-    return buckets
+    return bucket_packed
 end
 
 function Buckets:stop()
