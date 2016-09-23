@@ -445,9 +445,7 @@ function SampleSet:sample(p)
 end
 
 function SampleSet:packed()
-    return {
-        sampler = 'packed',
-    }
+    return self
 end
 
 function SampleSet:status()
