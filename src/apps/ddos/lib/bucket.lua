@@ -280,6 +280,39 @@ function Bucket:check_violation(now)
     end
 end
 
+
+function Bucket:packed()
+    local counters = {}
+
+    -- Grab counter values as of now
+    for counter in self.counters do
+        counters[counter] = self:get_counter(counter)
+    end
+
+    return {
+        name           = self.name,
+        filter         = self.filter,
+        period         = self.period,
+        average_period = self.avg_period,
+        pps_burst_rate = self.pps_burst_rate,
+        bps_burst_rate = self.bps_burst_rate,
+        pps_rate       = self.pps_rate,
+        bps_rate       = self.bps_rate,
+        cooldown       = self.cooldown,
+        sample_rate    = self.sample_rate,
+        avg_pps        = self.avg_pps,
+        avg_bps        = self.avg_bps,
+        cur_packets    = self.cur_packets,
+        cur_bits       = self.cur_bits,
+        last_calc      = self.last_calc,
+        violated       = self.violated,
+        first_violated = self.first_violated,
+        last_violated  = self.last_violated,
+        sampler        = self.sampler:packed(),
+    }
+end
+
+
 function Bucket:periodic()
     local now = tonumber(app_now())
     -- Only calculate elapsed > self.period

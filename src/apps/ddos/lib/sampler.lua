@@ -444,6 +444,11 @@ function SampleSet:sample(p)
     self.sampled_duration = self.finished - self.started
 end
 
+function SampleSet:packed()
+    return {
+        sampler = 'packed',
+    }
+end
 
 function SampleSet:status()
     log_debug("SampleSet Status")

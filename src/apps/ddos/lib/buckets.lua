@@ -69,8 +69,14 @@ function Buckets:get_bucket_by_name(bucket_name)
     return self.buckets[bucket_id]
 end
 
+-- Get bucket in 'packable' format (i.e. no functions, no weird data)
 function Buckets:get_buckets()
-    return self.buckets
+    local buckets = {}
+    for bucket in self.buckets do
+        buckets[bucket.name] = bucket:packed()
+    end
+
+    return buckets
 end
 
 function Buckets:stop()

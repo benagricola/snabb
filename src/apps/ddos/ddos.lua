@@ -34,18 +34,6 @@ local m_unpack       = msgpack.unpack
 local classifier = require("apps.ddos.classifiers.pflua")
 local buckets    = require("apps.ddos.lib.buckets")
 
-
-local struct_counter_t = ffi_typeof('struct counter')
-
--- Msgpack Monkeypatch to auto-encode cdata counters as an unsigned integer
-msgpack.packers['cdata'] = function (buffer, data)
-    -- If cdata is a counter, conver to number and encode unsigned
-    if ffi_istype(struct_counter_t, data) then
-        local num = tonumber(data.c)
-        msgpack.packers['unsigned'](buffer, num)
-    end
-end
-
 require("core.link_h")
 
 Detector = {}
