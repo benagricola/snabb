@@ -31,17 +31,6 @@ local Bucket = {
     },
 }
 
-local counter_name = "ddos/%s/%s"
-
-local function open_counter(bucket, metric)
-    cnt = counter.open(counter_name:format(bucket, metric))
-    return cnt
-end
-
-local function close_counter(bucket, metric)
-    return counter.delete(counter_name:format(bucket, metric))
-end
-
 
 function Bucket:new(cfg)
     local self = {
@@ -330,10 +319,7 @@ function Bucket:periodic()
 end
 
 function Bucket:stop()
-    -- Delete all registered counters
-    for metric, c in pairs(self.counters) do
-        close_counter(self.name, metric)
-    end
+    shm.delete_frame(self.counters)
 end
 
 local function pad(s, width, padder)
