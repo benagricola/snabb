@@ -289,7 +289,7 @@ function Bucket:packed()
         counters[counter] = self:get_counter(counter)
     end
 
-    return {
+    local packed = {
         name           = self.name,
         filter         = self.filter,
         period         = self.period,
@@ -307,9 +307,14 @@ function Bucket:packed()
         last_calc      = self.last_calc,
         violated       = self.violated,
         first_violated = self.first_violated,
-        last_violated  = self.last_violated,
-        sampler        = self.sampler:packed(),
+        last_violated  = self.last_violated
     }
+
+    if self.sampler then
+        packed.sampler = self.sampler:packed()
+    end
+
+    return packed
 end
 
 
