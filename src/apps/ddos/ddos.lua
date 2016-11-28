@@ -214,7 +214,6 @@ function Detector:process_packet(p)
     bucket:add_packet(p)
 
     -- TODO: If rule is in violation, log packet?
-    -- TODO: Calculate attacked host or subnet?
 
     return
 end

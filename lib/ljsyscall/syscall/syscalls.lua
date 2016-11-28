@@ -76,7 +76,11 @@ end
 
 -- generic system calls
 function S.close(fd)
+  if fd == getfd(fd) then -- fd number
     return retbool(C.close(getfd(fd)))
+  else                    -- fd object: avoid mulitple close
+    return fd:close()
+  end
 end
 function S.chdir(path) return retbool(C.chdir(path)) end
 function S.fchdir(fd) return retbool(C.fchdir(getfd(fd))) end
