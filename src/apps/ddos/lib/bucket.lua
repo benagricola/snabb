@@ -271,6 +271,8 @@ end
 
 
 function Bucket:packed()
+
+    -- Produce a serializable version of ourselves
     local counters = {}
 
     -- Grab counter values as of now
