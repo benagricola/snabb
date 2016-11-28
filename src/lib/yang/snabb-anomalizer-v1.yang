@@ -1,0 +1,94 @@
+module radish-anomalizer-v1 {
+  namespace snabb:radish;
+  prefix anomalizer;
+
+  import ietf-inet-types { prefix inet; }
+  import ietf-yang-types { prefix yang; }
+
+  organization "Squiz UK Limited";
+  contact "Ben Agricola <bagricola@squiz.co.uk>";
+  description
+   "Configuration for Snabb RADISH Anomalizer.";
+
+  revision 2016-11-28 {
+    description
+     "Initial revision.";
+  }
+
+  container anomalizer-config {
+    description
+     "Configuration for Snabb RADISH Anomalizer.";
+
+    grouping vlan-tagging {
+      description
+       "802.1Q Ethernet tagging.";
+
+      leaf vlan-tag {
+        type uint16 {
+          range 0..4095;
+        }
+        description
+         "802.1Q Ethernet VLAN tag for this interface.";
+      }
+    }
+
+    grouping interface {
+      description
+       "Physical interface configuration";
+
+      leaf type {
+        type enumeration {
+            enum pci;
+            enum socket;
+            enum tap;
+        };
+
+        description
+         "Interface type";
+      }
+
+      leaf address {
+        type yang:phys-address;
+      }
+
+      leaf name {
+        type string;
+      }
+    }
+
+    container external-interface {
+      description
+       "Configuration for the external, internet-facing
+        interface.";
+
+      presence true;
+      uses interface;
+      uses vlan-tagging;
+    }
+
+    container internal-interface {
+      description
+       "Configuration for the internal interface.";
+
+      presence true;
+      uses interface;
+      uses vlan-tagging;
+    }
+  }
+
+  container anomalizer-state {
+    description "State data about RADISH Anomalizer.";
+    presence true;
+    config false;
+
+    leaf in-ipv4-packets {
+      type yang:zero-based-counter64;
+      description "All valid incoming IPv4 packets.";
+    }
+
+    leaf out-ipv4-packets {
+      type yang:zero-based-counter64;
+      description "Valid outgoing IPv4 packets.";
+    }
+
+}
