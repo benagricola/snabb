@@ -9,6 +9,7 @@ local log_debug     = log.debug
 local os_time       = require("os").time
 local constants     = require("apps.lwaftr.constants")
 local lwutil        = require("apps.lwaftr.lwutil")
+local lib           = require("core.lib")
 local packet        = require("core.packet")
 local math          = require("math")
 local math          = require("math")
@@ -32,7 +33,7 @@ local uuid          = require("lib.uuid")
 uuid.seed()
 
 local rd16, wr16, rd32, wr32 = lwutil.rd16, lwutil.wr16, lwutil.rd32, lwutil.wr32
-local ntohs, ntohl = lwutil.htons, lwutil.htonl
+local ntohs, ntohl = lib.htons, lib.htonl
 
 local n_ethertype_ipv4     = constants.n_ethertype_ipv4
 local n_ethertype_ipv6     = constants.n_ethertype_ipv6
