@@ -27,6 +27,8 @@ local packet_free    = packet.free
 local packet_clone   = packet.clone
 local json           = require("lib.json")
 local json_decode    = json.decode
+local p_ethernet = require("lib.protocol.ethernet")
+local p_datagram = require("lib.protocol.datagram")
 
 
 require("core.link_h")
@@ -113,6 +115,9 @@ end
 -- Processes a single received packet. Classify it by defined rules and place
 -- into a bucket.
 function Anomaly:process_packet(p)
+    local dgram = p_datagram(p, p_ethernet)
+
+    print(dgram:parse():type())
     return
 end
 
