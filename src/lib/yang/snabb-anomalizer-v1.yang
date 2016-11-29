@@ -1,4 +1,4 @@
-module radish-anomalizer-v1 {
+module snabb-anomalizer-v1 {
   namespace snabb:radish;
   prefix anomalizer;
 
@@ -41,7 +41,7 @@ module radish-anomalizer-v1 {
             enum pci;
             enum socket;
             enum tap;
-        };
+        }
 
         description
          "Interface type";
@@ -49,10 +49,12 @@ module radish-anomalizer-v1 {
 
       leaf address {
         type yang:phys-address;
+        description "Physical interface address";
       }
 
       leaf name {
         type string;
+        description "Interface name";
       }
     }
 
@@ -90,5 +92,5 @@ module radish-anomalizer-v1 {
       type yang:zero-based-counter64;
       description "Valid outgoing IPv4 packets.";
     }
-
+  }
 }

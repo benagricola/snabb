@@ -8,7 +8,7 @@ local json  = require("lib.json")
 local tap   = require("apps.tap.tap")
 local raw   = require("apps.socket.raw")
 local vlan  = require("apps.vlan.vlan")
-local ddos  = require("apps.ddos.ddos")
+local anomaly  = require("apps.ddos.anomaly")
 
 local log           = require("lib.log")
 local log_info      = log.info
@@ -49,14 +49,12 @@ end
 function parse_args(args)
     local opt = {
         report = false,
-        config_file_path = "/etc/radish/anomalizer.json",
         int_in  = {},
         int_out = {},
     }
 
     local handlers = {}
     function handlers.h (arg) print(usage) main.exit(1) end
-    function handlers.c (arg) opt.config_file_path = arg end
     function handlers.i (arg)
         table.insert(opt.int_in, arg)
     end
@@ -74,7 +72,7 @@ function parse_args(args)
         opt.in_vlan = vlans
     end
 
-    args = lib.dogetopt(args, handlers, "hc:i:o:g:c:n:b", long_opts)
+    args = lib.dogetopt(args, handlers, "hi:o:g:c:n:b", long_opts)
 
     if #opt.int_in < 1 then
         log_critical("Missing argument -i")
@@ -83,11 +81,6 @@ function parse_args(args)
 
     if #opt.int_out < 1 then
         log_warn("Not forwarding captured traffic...")
-    end
-
-    if not file_exists(opt.config_file_path) then
-        log_critical("Config file '%s' does not exist!", opt.config_file_path)
-        main.exit(1)
     end
 
     if opt.in_vlan then
@@ -156,10 +149,10 @@ function run (args)
 
     local c = config.new()
 
-    config.app(c, "ddos", ddos.Detector, {config_file_path = opt.config_file_path})
+    config.app(c, "anomaly", anomaly.Anomaly, {})
 
     -- Configure input interfaces, redirecting packets to vlanmux.trunk
-    -- if in_vlan is set or passing directly to ddos.input if not.
+    -- if in_vlan is set or passing directly to anomaly.input if not.
     for id, interface in ipairs(opt.int_in) do
         local int_name = config_interface(c, interface)
         if not int_name then
@@ -183,7 +176,7 @@ function run (args)
             config.link(c, linkspec)
 
 
-            -- Configure vlanmux.output -> ddos.input
+            -- Configure vlanmux.output -> anomaly.input
             for _, vlan in ipairs(opt.in_vlan) do
                 -- Deal with native vlan (i.e. untagged)
                 if vlan == 0 then
@@ -192,18 +185,18 @@ function run (args)
                     vlan = "vlan" .. vlan
                 end
 
-                local linkspec = muxname .. "." .. vlan .. " -> ddos.input"
+                local linkspec = muxname .. "." .. vlan .. " -> anomaly.input"
                 log_info("Configuring vlan link %s", linkspec)
                 config.link(c, linkspec)
             end
         else
-            linkspec = int_name .. ".output -> ddos.input"
+            linkspec = int_name .. ".output -> anomaly.input"
             log_info("Configuring input link %s", linkspec)
             config.link(c, linkspec)
         end
     end
 
-    -- Configure output interfaces, sourced from ddos.output
+    -- Configure output interfaces, sourced from anomaly.output
     for _, interface in ipairs(opt.int_out) do
         local int_name = config_interface(c, interface)
         if not int_name then
@@ -211,7 +204,7 @@ function run (args)
             main.exit(1)
         end
 
-        local linkspec = "ddos.output -> " .. int_name .. ".input"
+        local linkspec = "anomaly.output -> " .. int_name .. ".input"
         log_info("Configuring output link %s", linkspec)
         config.link(c, linkspec)
     end

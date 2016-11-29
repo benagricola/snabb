@@ -31,17 +31,20 @@ local json_decode    = json.decode
 
 require("core.link_h")
 
-Anomaly = {}
+Anomaly = {
+    config = {
+        core = { required = false },
+    }
+}
 
 
 -- I don't know what I'm doing
-function Anomaly:new (arg)
-    local conf = arg and config.parse_app_arg(arg) or {}
+function Anomaly:new (conf)
 
     local o = {
         last_report   = 0,
         last_periodic = 0,
-        core          = conf.core,
+        core          = conf.core or 0,
     }
 
     self = setmetatable(o, {__index = Anomaly})
@@ -70,9 +73,11 @@ function Anomaly:periodic()
     end
 end
 
+
 function Anomaly:report()
     -- No-Op right now
 end
+
 
 function Anomaly:stop()
 end
