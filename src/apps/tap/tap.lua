@@ -72,6 +72,7 @@ end
 
 function Tap:push ()
    local l = self.input.input
+   if l == nil then return end
    while not link.empty(l) do
       -- The socket write might of blocked so don't dequeue the packet from the link
       -- until the write has completed.
