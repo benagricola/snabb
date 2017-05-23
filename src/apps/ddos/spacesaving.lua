@@ -1,5 +1,7 @@
-local math     = require 'math'
-local math_exp = math.exp
+local table        = require('table')
+local table_concat = table.concat
+local math         = require('math')
+local math_exp     = math.exp
 
 local ln2_cst = math.log(2)
 
@@ -9,6 +11,7 @@ local SpaceSaving = {}
 local function SimpleRateBucket()
     return {
         key       = "",
+        data      = {},
         count     = 0,
         lastTs    = 0,
         rate      = 0,
@@ -51,7 +54,11 @@ function SpaceSaving:recount(rate, lastTs, nowTs)
     return rate * math_exp((nowTs - lastTs) * self.weightHelper)
 end
 
+-- Key is a table - convert to String
 function SpaceSaving:touch(key, nowTs)
+    local data  = key
+    local key   = table_concat(data, '\0')
+
     local olist = self.olist
     local hash  = self.hash
     local max   = self.max
@@ -72,6 +79,7 @@ function SpaceSaving:touch(key, nowTs)
 
             bucket.key, bucket.errLastTs, bucket.errRate =
                 key, bucket.lastTs, bucket.rate
+            bucket.data = data
         else
             bucketno = 1
             local cur_bucket = olist[bucketno]
@@ -87,6 +95,7 @@ function SpaceSaving:touch(key, nowTs)
 
             bucket.key, bucket.errLastTs, bucket.errRate =
                 key, bucket.lastTs, bucket.rate
+            bucket.data = data
         end
 
     end
@@ -121,6 +130,10 @@ function SpaceSaving:touch(key, nowTs)
     end
 end
 
+local function esort(a, b) 
+    return a.hirate > b.hirate
+end
+
 function SpaceSaving:getAll(nowTs)
     local olist = self.olist
     local elements = {}
@@ -130,15 +143,17 @@ function SpaceSaving:getAll(nowTs)
             local rate    = self:recount(b.rate, b.lastTs, nowTs)
             local errRate = self:recount(b.errRate, b.errLastTs, nowTs)
             elements[#elements+1] = {
-                Key = b.key,
-                LoCount = b.count - b.error,
-                HiCount = b.count,
-                LoRate  = rate - errRate,
-                HiRate  = rate,
+                key  = b.key,
+                data = b.data,
+                locount = b.count - b.error,
+                hicount = b.count,
+                lorate  = rate - errRate,
+                hirate  = rate,
             }
         end
     end
 
+    table.sort(elements, esort)
     return elements
 end
 

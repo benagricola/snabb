@@ -93,6 +93,8 @@ function parse_args(args)
 end
 
 local int_ctr = 1
+local link_in  = 1
+local link_out = 2
 
 function config_interface(c, interface)
     local ifname = "int_" .. int_ctr
@@ -100,14 +102,23 @@ function config_interface(c, interface)
     if string.find(interface, "gen") == 1 then
         log_info("Interface %s is traffic generator (TEST MODE)...", interface)
         config.app(c, ifname, basic.Source, interface)
-        return ifname
+        return ifname, { 'output' }
+    end
+
+
+    if string.find(interface, "raw:") == 1 then
+        interface = string.sub(interface, 5)
+        -- Assume anything still here is a RawSocket device
+        log_info("Interface %s is RawSocket...", interface)
+        config.app(c, ifname, raw.RawSocket, interface)
+        return ifname, { 'tx', 'rx' }
     end
 
     -- Handle tap/tun interfaces
     if string.find(interface, "tap") == 1 or string.find(interface, "tun") == 1 then
         log_info("Interface %s is tap/tun...", interface)
         config.app(c, ifname, tap.Tap, interface)
-        return ifname
+        return ifname, { 'output', 'input' } 
     end
 
     -- Handle hardware interfaces
@@ -135,13 +146,8 @@ function config_interface(c, interface)
         end
 
         int_ctr = int_ctr + 1
-        return ifname
+        return ifname, { 'output', 'input' }
     end
-
-    -- Assume anything still here is a RawSocket device
-    log_info("Interface %s is RawSocket...", interface)
-    config.app(c, ifname, raw.RawSocket, interface)
-    return ifname
 end
 
 function run (args)
@@ -161,7 +167,7 @@ function run (args)
     -- Configure input interfaces, redirecting packets to vlanmux.trunk
     -- if in_vlan is set or passing directly to anomaly.input if not.
     for id, interface in ipairs(opt.int_in) do
-        local int_name = config_interface(c, interface)
+        local int_name, links = config_interface(c, interface)
         if not int_name then
             log_critical("Unable to configure app for interface %s!", interface)
             main.exit(1)
@@ -178,7 +184,7 @@ function run (args)
             config.app(c, muxname, vlan.VlanMux)
 
             -- Configure interface -> vlanmux input
-            local linkspec = int_name .. ".output -> " .. muxname .. ".trunk"
+            local linkspec = int_name .. "." .. links[link_in] .. " -> " .. muxname .. ".trunk"
             log_info("Configuring input link %s", linkspec)
             config.link(c, linkspec)
 
@@ -197,7 +203,7 @@ function run (args)
                 config.link(c, linkspec)
             end
         else
-            linkspec = int_name .. ".output -> anomaly.input"
+            linkspec = int_name .. "." .. links[link_in] .. " -> anomaly.input"
             log_info("Configuring input link %s", linkspec)
             config.link(c, linkspec)
         end
@@ -205,13 +211,13 @@ function run (args)
 
     -- Configure output interfaces, sourced from anomaly.output
     for _, interface in ipairs(opt.int_out) do
-        local int_name = config_interface(c, interface)
+        local int_name, links = config_interface(c, interface)
         if not int_name then
             log_critical("Unable to configure app for interface %s!", interface)
             main.exit(1)
         end
 
-        local linkspec = "anomaly.output -> " .. int_name .. ".input"
+        local linkspec = "anomaly.output -> " .. int_name "." .. links[link_out]
         log_info("Configuring output link %s", linkspec)
         config.link(c, linkspec)
     end
