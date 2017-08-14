@@ -4,6 +4,7 @@ obj
 *.so
 *.o
 *#
+*.sw*
 __pycache__
 /src/snabbswitch
 /src/snabb
