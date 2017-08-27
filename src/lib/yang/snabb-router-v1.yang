@@ -143,6 +143,13 @@ module snabb-router-v1 {
          the Router process on the system.";
     }
 
+    leaf socket {
+      type string;
+      mandatory true;
+      description
+       "zAPI Socket to listen on";
+    }
+
     list interface {
       key device;
 
@@ -152,11 +159,10 @@ module snabb-router-v1 {
       leaf type {
           type enumeration {
               enum routed;
-              enum ctrl;
               enum mgmt;
           }
           description
-           "Interface type. This can be 'routed', 'ctrl', 'mgmt'";
+           "Interface type. This can be 'routed' or 'mgmt'";
           default routed;
       }
 

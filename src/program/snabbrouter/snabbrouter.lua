@@ -4,8 +4,13 @@ local S     = require("syscall")
 
 local engine     = require("core.app")
 
-local yang = require('lib.yang.yang')
+local yang       = require('lib.yang.yang')
 
+local bit_lshift = require('bit').lshift
+
+local basic      = require('apps.basic.basic_apps')
+local usock      = require('apps.socket.unix')
+local pcap       = require('apps.pcap.pcap')
 local config     = require("core.config")
 local worker     = require("core.worker")
 local leader     = require("apps.config.leader")
@@ -44,6 +49,15 @@ local function convert_ipv4(addr)
    if addr ~= nil then return ipv4:pton(ipv4_ntop(addr)) end
 end
 
+
+-- Stolen from apps/ipv4/arp.lua as it's localled
+local function random_mac()
+   local mac = lib.random_bytes(6)
+   -- Bit 0 is 0, indicating unicast.  Bit 1 is 1, indicating locally
+   -- administered.
+   mac[0] = bit_lshift(mac[0], 2) + 2
+   return mac
+end
 
 local function gen_ports(incoming, outgoing)
     return { incoming = incoming, outgoing = outgoing }
@@ -102,8 +116,11 @@ function run(args)
 
     local ctrl_ips = {}
 
+    local interfaces = {}
+
     for int_name, params in pairs(conf.router_config.interface) do
-        local ip = params.ip[1]
+        local ip  = params.ip[1]
+        local mac = params.mac or nil
 
         -- TODO: Hand off Multiple IPs to ARP / Router
         log_info('Configuring ' .. params.type .. ' interface ' .. int_name .. ' with address ' .. ipv4_ntop(ip))
@@ -118,7 +135,16 @@ function run(args)
 
         ctrl_ips[#ctrl_ips+1] = converted_ipv4
 
-        config.app(c, "arp_" .. int_name, arp.ARP, { self_ip = converted_ipv4, next_ip = converted_ipv4 })
+        -- Allocate random mac addr for this interface
+        if not mac then
+            mac = random_mac()
+        end
+
+        config.app(c, "arp_" .. int_name, arp.ARP, { self_ip = converted_ipv4, self_mac = mac, next_ip = ipv4:pton('10.231.14.2') })
+
+
+        interfaces[#interfaces+1] = { name = int_name, mac = mac, ip = converted_ipv4 }
+
         config.app(c, "icmp_" .. int_name, lwipv4.ICMPEcho, { address = converted_ipv4 })
 
         -- Link interface to ARP handler
@@ -130,12 +156,27 @@ function run(args)
         config.link(c, 'icmp_' .. int_name .. '.south -> arp_' .. int_name .. '.north')
         --
         -- Link all apps to router
-        config.link(c, 'icmp_' .. int_name .. '.north -> router.' .. params.type)
-        config.link(c, 'router.' .. params.type .. ' -> icmp_' .. int_name .. '.north')
+--        config.link(c, 'icmp_' .. int_name .. '.north -> router.' .. params.type)
+--        config.link(c, 'router.' .. params.type .. ' -> icmp_' .. int_name .. '.north')
+        config.link(c, 'icmp_' .. int_name .. '.north -> teein.input')
+        config.link(c, 'teein.output -> router.' .. params.type)
+        config.link(c, 'teein.output -> pcapwin.input')
+        config.link(c, 'teeout.output -> icmp_' .. int_name .. '.north')
+        config.link(c, 'teeout.output -> pcapwout.input')
+        config.link(c, 'router.' .. params.type .. ' -> teeout.input')
     end
 
     -- Create zAPIRouterControl App. This can be configured to load routes into other apps
-    config.app(c, "router", router.zAPIRouterCtrl, { addresses = ctrl_ips } )
+    config.app(c, "router", router.zAPIRouterCtrl, { addresses = ctrl_ips, interfaces = interfaces } )
+
+    config.app(c, "ctrlsock",  usock.UnixSocket, { filename = conf.router_config.socket, listen = true, mode = 'stream'})
+    config.link(c, 'ctrlsock.rx -> router.ctrl')
+    config.link(c, 'router.ctrl -> ctrlsock.tx')
+
+    config.app(c, "teeout", basic.Tee, {})
+    config.app(c, "teein", basic.Tee, {})
+    config.app(c, "pcapwout",  pcap.PcapWriter, '/u/out.pcap')
+    config.app(c, "pcapwin",  pcap.PcapWriter, '/u/in.pcap')
 
     engine.busywait = false
     engine.configure(c)

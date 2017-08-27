@@ -116,6 +116,7 @@ function UnixSocket:new (arg)
       local limit = engine.pull_npackets
       if sock and l ~= nil then
          while limit > 0 and try_read() do
+            print('Socket sending data')
             link.transmit(l, rxp)
             rxp = packet.allocate()
             limit = limit - 1
@@ -129,6 +130,7 @@ function UnixSocket:new (arg)
          -- Transmit all queued packets.
          -- Let the kernel drop them if it does not have capacity.
          while sock and not link.empty(l) do
+            print('Socket receiving data')
             local p = link.receive(l)
             S.write(connect(), p.data, p.length)
             packet.free(p)

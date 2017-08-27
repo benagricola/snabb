@@ -1,4 +1,5 @@
 local header = require('lib.protocol.header')
+local zc     = require('lib.zebra.constants')
 
 local ffi = require('ffi')
 local lib = require('core.lib')
@@ -9,12 +10,16 @@ local ffi_sizeof = ffi.sizeof
 
 local htons, ntohs = lib.htons, lib.ntohs
 
-local zserv = subClass(header)
+-- This is the base Zebra API Header class.
+-- ULP are 'Message Body' Protocols'
+local zebra = subClass(header)
 
-zserv._name = 'zserv'
-zserv._ulp = { method = nil }
+zebra._name = 'zebra'
+zebra._ulp = {
+    method    = nil
+}
 
-zserv:init({
+zebra:init({
       [1] = ffi_typeof[[
 	    struct {
 	       uint16_t    length;
@@ -27,14 +32,14 @@ zserv:init({
 	       uint8_t     marker;
 	       uint8_t     version;
 	       uint16_t    command;
-	    } __attribute__((packed))
+	    }
       ]],
       [3] = ffi_typeof[[
 	    struct {
 	       uint16_t    length;
 	       uint8_t     marker;
 	       uint8_t     version;
-               uint16_t    vrf_id;
+	       uint16_t    vrf_id;
 	       uint16_t    command;
 	    } __attribute__((packed))
       ]],
@@ -43,13 +48,13 @@ zserv:init({
 -- V2 uses the same header as V1
 local types = { v0 = 1, v1 = 2, v2 = 2, v3 = 3 }
 
-function zserv:new(config)
-    local o = zserv:superClass().new(self)
+function zebra:new(config)
+    local o = zebra:superClass().new(self)
     local type = nil
 
     local version = config.version or 3
 
-    if config.type and types[type] then
+    if config.type and types[config.type] then
         type = config.type
     else
         type = 'v'..version
@@ -73,8 +78,8 @@ function zserv:new(config)
     return o
 end
 
-function zserv:new_from_mem(mem, size)
-   local o      = zserv:superClass().new_from_mem(self, mem, size)
+function zebra:new_from_mem(mem, size)
+   local o      = zebra:superClass().new_from_mem(self, mem, size)
    local header = o._header
    local data   = header.box[0]
 
@@ -94,7 +99,7 @@ function zserv:new_from_mem(mem, size)
    end
    local version_header = types['v'..data.version]
 
-   -- Version header was not 0 or 1 but also unimplemented by this zserv class
+   -- Version header was not 0 or 1 but also unimplemented by this zebra class
    if not version_header then
        o:free()
        return nil
@@ -106,7 +111,7 @@ function zserv:new_from_mem(mem, size)
    return o
 end
 
-function zserv:length(length)
+function zebra:length(length)
     local h = self:header()
     if length ~= nil then
         h.length = htons(length)
@@ -114,7 +119,7 @@ function zserv:length(length)
     return ntohs(h.length)
 end
 
-function zserv:marker(marker)
+function zebra:marker(marker)
     local h = self:header()
     if marker ~= nil then
         h.marker = marker
@@ -122,7 +127,7 @@ function zserv:marker(marker)
     return h.marker
 end
 
-function zserv:version(version)
+function zebra:version(version)
     local h = self:header()
     if version ~= nil then
         h.version = version
@@ -131,21 +136,21 @@ function zserv:version(version)
     return h.version
 end
 
-function zserv:vrf_id(vrf_id)
+function zebra:vrf_id(vrf_id)
     local h = self:header()
 
-    if vrf_id ~= nil then
+    if vrf_id ~= nil and self:version() > 2 then
 	h.vrf_id = htons(vrf_id)
     end
 
-    if self:version() < 2 then
+    if self:version() <= 2 then
         return 0
     end
 
     return ntohs(h.vrf_id)
 end
 
-function zserv:command(command)
+function zebra:command(command)
     local h = self:header()
     if command ~= nil then
         h.command = htons(command)
@@ -153,4 +158,4 @@ function zserv:command(command)
     return ntohs(h.command)
 end
 
-return zserv
+return zebra
