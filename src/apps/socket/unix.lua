@@ -107,10 +107,10 @@ function UnixSocket:new (arg)
          return false
       end
 
-      -- Error or EOF, reset sock
+      -- EOF, reset sock
       if bytes == 0 then
-         sock = nil
-         return false
+          close()
+          return false
       end
 
       rxp.length = bytes
