@@ -48,6 +48,7 @@ structs.cmd_interface_add_v1 = ffi_typeof(string_format([[
         uint32_t mtu_v6;
         uint32_t bandwidth;
         uint32_t hwaddr_len;
+        uint8_t  hwaddr[6];
     } __attribute__((packed))
 ]], zebra.INTERFACE_NAMSIZE))
 
@@ -63,6 +64,7 @@ structs.cmd_interface_add_v3 = ffi_typeof(string_format([[
         uint32_t bandwidth;
         uint32_t llt;
         uint32_t hwaddr_len;
+        uint8_t  hwaddr[6];
     } __attribute__((packed))
 ]], zebra.INTERFACE_NAMSIZE))
 

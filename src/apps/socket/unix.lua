@@ -103,12 +103,18 @@ function UnixSocket:new (arg)
    -- Return true on success or false if no data is available.
    local function try_read ()
       local bytes = S.read(sock, rxp.data, packet.max_payload)
-      if bytes then
-         rxp.length = bytes
-         return true
-      else
+      if not bytes then
          return false
       end
+
+      -- Error or EOF, reset sock
+      if bytes == 0 then
+         sock = nil
+         return false
+      end
+
+      rxp.length = bytes
+      return true
    end
    function self:pull()
       connect()
@@ -116,7 +122,6 @@ function UnixSocket:new (arg)
       local limit = engine.pull_npackets
       if sock and l ~= nil then
          while limit > 0 and try_read() do
-            print('Socket sending data')
             link.transmit(l, rxp)
             rxp = packet.allocate()
             limit = limit - 1
@@ -130,7 +135,6 @@ function UnixSocket:new (arg)
          -- Transmit all queued packets.
          -- Let the kernel drop them if it does not have capacity.
          while sock and not link.empty(l) do
-            print('Socket receiving data')
             local p = link.receive(l)
             S.write(connect(), p.data, p.length)
             packet.free(p)

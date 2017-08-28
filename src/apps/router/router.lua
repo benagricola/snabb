@@ -54,7 +54,7 @@ function zAPIRouterCtrl:new(conf)
         port        = conf.port or 2600,
         vrf_id      = conf.vrf_id or 0,
         reply       = {},
-        peers       = {},
+        peer        = {},
     }
 
     -- Preconfigure Zebra header based on version. Ignore v0 because :care:
@@ -67,50 +67,18 @@ function zAPIRouterCtrl:new(conf)
     return setmetatable(o, {__index=zAPIRouterCtrl})
 end
 
-function zAPIRouterCtrl:get_reply(dst_ip, dst_port, payload, payload_len)
-    local k = ipv4:ntop(dst_ip) .. dst_port
-
-    -- Generate new packet headers where required (dst ip / port changes)
-    if not self.reply[k] then
-        self.reply[k] = {
-            eth     = ethernet:new({ type = ethertype_ipv4 }),
-            ipv4    = ipv4:new({ src = self.address, dst = dst_ip, protocol = proto_udp, ttl = 64, flags = 0x02 }),
-            udp     = udp:new({ src_port = self.port, dst_port = dst_port }),
-        }
-    end
-
-    local r = self.reply[k]
-
+function zAPIRouterCtrl:get_reply(payload, payload_len)
     -- Allocate a new packet and assign to datagram
     local p = packet.allocate()
     local dgram = datagram:new(p)
 
-    -- Packet length starts with length of payload
-    local len = payload_len
-
     -- Assign payload to packet
-    dgram:payload(payload, len)
-
-    -- Calculate UDP length + checksum, and push
-    len = len + r.udp:sizeof()
-    r.udp:length(len)
-    r.udp:checksum(p.data, p.length, r.ipv4)
-
-    dgram:push(r.udp)
-
-    -- Calculate IP length + checksum, and push
-    len = len + r.ipv4:sizeof()
-    r.ipv4:total_length(len)
-    r.ipv4:checksum()
-    dgram:push(r.ipv4)
-
-    -- Push Ethernet
-    dgram:push(r.eth)
+    dgram:payload(payload, payload_len)
     return dgram
 end
 
 
-function zAPIRouterCtrl:send(dst_ip, dst_port, body)
+function zAPIRouterCtrl:send(body)
     local lnk = self.output.ctrl
 
     -- Set zebra header version based on message body
@@ -121,22 +89,32 @@ function zAPIRouterCtrl:send(dst_ip, dst_port, body)
     zebra:length(body:sizeof() + zebra:sizeof())
 
     -- Get header and body reply packets
-    local r_header = self:get_reply(dst_ip, dst_port, zebra:header_ptr(), zebra:sizeof())
-    local r_body   = self:get_reply(dst_ip, dst_port, body:data(), body:sizeof())
+    local r_header = self:get_reply(zebra:header_ptr(), zebra:sizeof())
+    local r_body   = self:get_reply(body:data(), body:sizeof())
 
     transmit(lnk, r_header:packet())
     transmit(lnk, r_body:packet())
 end
 
-local function get_peer(self, peer)
-    local peer_settings = self.peers[peer]
+function zAPIRouterCtrl:send_interfaces(cmd, zmsg_opt)
+    for index, int in ipairs(self.interfaces) do
+	local p_zebra_interface = zm.ZebraInterface:new(zmsg_opt)
+	p_zebra_interface:value('name', int.name)
+	p_zebra_interface:value('index', index)
+	p_zebra_interface:value('status', zc.INTERFACE_ACTIVE)
+	p_zebra_interface:value('flags', 0)
+	p_zebra_interface:value('metric', 1)
+	p_zebra_interface:value('mtu_v4', 1500)
+	p_zebra_interface:value('mtu_v6', 1500)
+	p_zebra_interface:value('bandwidth', 1000)
+	p_zebra_interface:value('llt', zc.LLT_ETHER)
+	p_zebra_interface:value('hwaddr_len', ntohl(6))
+	p_zebra_interface:value('hwaddr', int.mac)
 
-    if not peer_settings then
-	z_print('Received command from unknown peer ' .. peer .. ', did it send a HELLO? ')
-        return nil
+	p_zebra_interface:type(cmd)
+	self:send(p_zebra_interface)
     end
-
-    return peer_settings
+    return
 end
 
 local function process(self, p)
@@ -144,32 +122,12 @@ local function process(self, p)
     local interfaces = self.interfaces
     local port       = self.port
 
-    local dgram = datagram:new(p, ethernet)
-    -- Parse the ethernet, ipvx amd udp headers
-    dgram:parse_n(3)
+    local dgram = datagram:new(p)
 
-    local stack = dgram:stack()
-    local p_eth, p_ipvx, p_udp = unpack(stack)
-
-    if not p_ipvx:dst_eq(address) then
-        z_print('Packet dst address not equal to local addr')
-        return nil
-    end
-
-    local src_ip, src_port, dst_ip, dst_port =
-        p_ipvx:src(), p_udp:src_port(), p_ipvx:dst(), p_udp:dst_port()
-
-    local peer = ipv4:ntop(src_ip)
-
-    if dst_port ~= port then
-        z_print('Packet dst port not equal to local port')
-        return nil
-    end
-
-    -- Valid packet, decode zAPI
     local p_zebra = dgram:parse_match(zebra)
     if not p_zebra then
         z_print('Unable to parse ZServ API packet')
+        transmit(self.output.print, p)
         return nil
     end
 
@@ -185,81 +143,70 @@ local function process(self, p)
         p_zebra_msg = zm.ZebraHello:new_from_mem(body_mem, zmsg_opt)
 	if not p_zebra_msg then
 	    z_print('Unable to parse ZServ CMD_HELLO msg')
-	    return nil
+	    return true -- Free p
 	end
 
         local route_type = p_zebra_msg:value('route_type')
 
-        self.peers[peer] = { sending_route_type = route_type, receiving_route_type = nil, pending = true, version = version }
-        z_print('Received HELLO from peer ' .. peer .. ' with route type ' .. zc.ROUTE[route_type] .. ' and version ' .. version)
+        self.peer = { sending_route_type = route_type, receiving_route_type = nil, pending = true, version = version }
+        z_print('Received HELLO from peer with route type ' .. zc.ROUTE[route_type] .. ' and version ' .. version)
 
         local p_zebra_id_add = zm.ZebraRouterID:new(zmsg_opt)
         p_zebra_id_add:value('family', 2)
-        p_zebra_id_add:value('prefix', p_ipvx:src())
+        p_zebra_id_add:value('prefix', self.address)
         p_zebra_id_add:value('prefixlen', 32)
         p_zebra_id_add:type(zc.CMD_ROUTER_ID_UPDATE)
 
-        self:send(src_ip, src_port, p_zebra_id_add)
-        return
+        self:send(p_zebra_id_add)
+
+        -- Send our interfaces
+        self:send_interfaces(zc.CMD_INTERFACE_ADD, zmsg_opt)
+
+	return true -- Free p
     end
 
-    -- Check for valid peer settings for all further commands
-    local peer_settings = get_peer(self, peer)
-
-    if not peer_settings then
-	return
-    end
+    local peer = self.peer
 
     if cmd == zc.CMD_ROUTER_ID_ADD then
         -- Reply with our own ROUTER_ID_ADD
-        z_print('Received ROUTER_ID_ADD from peer ' .. peer .. ' - setting active and replying with ROUTER_ID_UPDATE...')
-        peer_settings.pending = false
-        return
+        z_print('Received ROUTER_ID_ADD from peer - setting active and replying with ROUTER_ID_UPDATE...')
+        peer.pending = false
+	return true -- Free p
     end
 
     if cmd == zc.CMD_INTERFACE_ADD then
         -- Client may have no interfaces
         if body_size == 0 then
-            z_print('Received INTERFACE_ADD from peer ' .. peer .. ' - with no interfaces...')
-            for index, int in ipairs(self.interfaces) do
-	        local p_zebra_interface_add = zm.ZebraInterface:new(zmsg_opt)
-                p_zebra_interface_add:value('name', int.name)
-                p_zebra_interface_add:value('index', index)
-                p_zebra_interface_add:value('status', zc.INTERFACE_ACTIVE)
-                p_zebra_interface_add:value('flags', 0)
-                p_zebra_interface_add:value('metric', 1)
-                p_zebra_interface_add:value('mtu_v4', 1500)
-                p_zebra_interface_add:value('mtu_v6', 1500)
-                p_zebra_interface_add:value('bandwidth', 1000)
-                p_zebra_interface_add:value('llt', zc.LLT_ETHER)
-                p_zebra_interface_add:value('hwaddr_len', ntohl(6))
-
-		p_zebra_interface_add:type(zc.CMD_INTERFACE_ADD)
-
-		self:send(src_ip, src_port, p_zebra_interface_add)
-            end
-            return
+            z_print('Peer has with no interfaces...')
+	    return true -- Free p
         end
 
         p_zebra_msg = zm.ZebraInterface:new_from_mem(body_mem, zmsg_opt)
 	if not p_zebra_msg then
 	    z_print('Unable to decode Zebra INTERFACE_ADD')
-	    return nil
+	    return true -- Free p
+        else
+            z_print('Received INTERFACE_ADD: ' .. p_zebra_msg:value('name'))
+            transmit(self.output.print, p)
+            return nil
 	end
-        return
+        return true -- Free p
     end
 
     if cmd == zc.CMD_REDISTRIBUTE_ADD then
         p_zebra_msg = zm.ZebraRedistribute:new_from_mem(body_mem, zmsg_opt)
 	if not p_zebra_msg then
 	    z_print('Unable to parse ZServ CMD_REDISTRIBUTE_ADD msg')
+            transmit(self.output.print, p)
 	    return nil
 	end
         local route_type = p_zebra_msg:value('route_type')
-        z_print('Peer ' .. peer .. ' is asking us to send routes of type ' .. zc.ROUTE[route_type])
-        peer_settings.receiving_route_type = route_type
-        return
+        z_print('Peer is asking us to send routes of type ' .. zc.ROUTE[route_type])
+        peer.receiving_route_type = route_type
+        return true -- Free p
     end
+
+    return true -- Free p if no command matched
 end
 
 function zAPIRouterCtrl:push()
@@ -270,9 +217,10 @@ function zAPIRouterCtrl:push()
     for _ = 1, readable do
         -- Receive packet
         local p = receive(lnk)
-        print('Received ctrl packet')
         local status = process(self, p)
-        packet.free(p)
+        if status then
+            packet.free(p)
+        end
     end
 end
 

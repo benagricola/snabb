@@ -80,6 +80,10 @@ end
 
 function zebra:new_from_mem(mem, size)
    local o      = zebra:superClass().new_from_mem(self, mem, size)
+   if not o then
+       return nil
+   end
+
    local header = o._header
    local data   = header.box[0]
 

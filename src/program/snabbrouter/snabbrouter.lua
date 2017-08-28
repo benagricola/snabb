@@ -43,6 +43,10 @@ local log_error     = log.error
 local log_critical  = log.critical
 local log_debug     = log.debug
 
+local ffi = require('ffi')
+local ffi_string = ffi.string
+local packet = require('core.packet')
+
 local int_ctr = 1
 
 local function convert_ipv4(addr)
@@ -63,6 +67,21 @@ local function gen_ports(incoming, outgoing)
     return { incoming = incoming, outgoing = outgoing }
 end
 
+local printapp = {}
+function printapp:new (name)
+  return {
+     push = function(self)
+	local l = self.input.rx
+	if l == nil then return end
+	while not link.empty(l) do
+	   local p = link.receive(l)
+	   print(name..': ', p.length, ffi_string(p.data, p.length))
+	   packet.free(p)
+	end
+     end
+  }
+end
+
 -- Select the correct driver for the interface.
 -- Return the ifname, and the correct name for the incoming and outgoing ports.
 local function config_interface(c, interface)
@@ -71,8 +90,10 @@ local function config_interface(c, interface)
     -- Handle tap/tun interfaces
     if string.find(interface, "tap") == 1 or string.find(interface, "tun") == 1 then
         log_debug('Interface %s is tun/tap', interface)
-        config.app(c, ifname, tap.Tap, interface)
-        return ifname, gen_ports('output', 'input')
+	config.app(c, ifname, raw.RawSocket, interface)
+	return ifname, gen_ports('output', 'input')
+        --config.app(c, ifname, tap.Tap, { name = interface, mtu = 1500, mtu_fixup = false, mtu_offset = 0 })
+        --return ifname, gen_ports('output', 'input')
     end
 
     -- Handle hardware interfaces
@@ -170,9 +191,11 @@ function run(args)
     config.app(c, "router", router.zAPIRouterCtrl, { addresses = ctrl_ips, interfaces = interfaces } )
 
     config.app(c, "ctrlsock",  usock.UnixSocket, { filename = conf.router_config.socket, listen = true, mode = 'stream'})
-    config.link(c, 'ctrlsock.rx -> router.ctrl')
-    config.link(c, 'router.ctrl -> ctrlsock.tx')
+    config.link(c, 'ctrlsock.tx -> router.ctrl')
+    config.link(c, 'router.print -> print.rx')
+    config.link(c, 'router.ctrl -> ctrlsock.rx')
 
+    config.app(c, "print", printapp, 'router')
     config.app(c, "teeout", basic.Tee, {})
     config.app(c, "teein", basic.Tee, {})
     config.app(c, "pcapwout",  pcap.PcapWriter, '/u/out.pcap')
