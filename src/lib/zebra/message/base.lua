@@ -8,6 +8,7 @@ local lib = require('core.lib')
 local ffi_cast   = ffi.cast
 local ffi_new    = ffi.new
 local ffi_fill   = ffi.fill
+local ffi_string = ffi.string
 local ffi_typeof = ffi.typeof
 local ffi_sizeof = ffi.sizeof
 local ffi_metatype = ffi.metatype
@@ -97,7 +98,10 @@ function ZebraMessage:data()
     return self._data
 end
 
-function ZebraMessage:_getField(field)
+function ZebraMessage:_getField(field, typ)
+    if typ == 'string' then
+        return ffi_string(self._data[field])
+    end
     return self._data[field]
 end
 
@@ -106,9 +110,9 @@ function ZebraMessage:_setField(field, value)
     return self._data[field]
 end
 
-function ZebraMessage:value(field, value)
+function ZebraMessage:value(field, value, typ)
     -- TODO: Find a way to test for existence of field.
-    local ok, cur_value = pcall(self._getField, self, field)
+    local ok, cur_value = pcall(self._getField, self, field, typ)
 
     if not ok then
         return

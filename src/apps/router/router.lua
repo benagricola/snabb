@@ -186,7 +186,7 @@ local function process(self, p)
 	    z_print('Unable to decode Zebra INTERFACE_ADD')
 	    return true -- Free p
         else
-            z_print('Received INTERFACE_ADD: ' .. p_zebra_msg:value('name'))
+            z_print('Received INTERFACE_ADD: ' .. p_zebra_msg:value('name', nil, 'string'))
             transmit(self.output.print, p)
             return nil
 	end
