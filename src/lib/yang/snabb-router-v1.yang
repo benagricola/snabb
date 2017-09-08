@@ -173,14 +173,32 @@ module snabb-router-v1 {
          "Device name or PCI address";
       }
 
-
-      leaf-list ip {
-        type inet:ipv4-address;
+      leaf tap {
+        type string;
         mandatory true;
         description
-         "A list of IP addresses assigned to the network interface.  Used
-          when generating error messages and responding to ICMP echo
-          requests.";
+         "Router Tap on Engine. Must exist and be tuntap";
+      }
+
+      leaf mac {
+        type yang:mac-address;
+        mandatory true;
+        description
+         "Mac address assigned to tap (and others)";
+      }
+
+      container address {
+        leaf ip {
+	    type inet:ipv4-address;
+	    mandatory true;
+	    description
+	     "A list of prefixes assigned to the network interface.  Used
+	      when generating error messages.";
+        }
+        leaf prefix {
+            type uint8;
+            mandatory true;
+        }
       }
 
       leaf mtu {

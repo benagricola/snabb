@@ -16,11 +16,11 @@ local structs = {}
 local ethertype_ipv4 = constants.ethertype_ipv4
 local ethertype_ipv6 = constants.ethertype_ipv6
 
-structs.cmd_hello_t = ffi_typeof[[
+structs.cmd_hello = ffi_typeof[[
     struct { uint8_t route_type; } __attribute__((packed))
 ]]
 
-structs.cmd_router_id_update_ipv4 = ffi_typeof[[
+structs.cmd_router_id_ipv4 = ffi_typeof[[
     struct {
         uint8_t  family;
         uint8_t  prefix[4];
@@ -28,7 +28,7 @@ structs.cmd_router_id_update_ipv4 = ffi_typeof[[
     } __attribute__((packed))
 ]]
 
-structs.cmd_router_id_update_ipv6 = ffi_typeof[[
+structs.cmd_router_id_ipv6 = ffi_typeof[[
     struct {
         uint8_t  family;
         uint8_t  prefix[16];
@@ -37,7 +37,7 @@ structs.cmd_router_id_update_ipv6 = ffi_typeof[[
 ]]
 
 -- We always specify hwaddr as an ethernet mac
-structs.cmd_interface_add_v1 = ffi_typeof(string_format([[
+structs.cmd_interface_v1 = ffi_typeof(string_format([[
     struct {
         char     name[%d];
         int32_t  index;
@@ -52,7 +52,7 @@ structs.cmd_interface_add_v1 = ffi_typeof(string_format([[
     } __attribute__((packed))
 ]], zebra.INTERFACE_NAMSIZE))
 
-structs.cmd_interface_add_v3 = ffi_typeof(string_format([[
+structs.cmd_interface_v3 = ffi_typeof(string_format([[
     struct {
         char     name[%d];
         int32_t  index;
@@ -67,5 +67,38 @@ structs.cmd_interface_add_v3 = ffi_typeof(string_format([[
         uint8_t  hwaddr[6];
     } __attribute__((packed))
 ]], zebra.INTERFACE_NAMSIZE))
+
+structs.cmd_interface_address_ipv4 = ffi_typeof[[
+    struct {
+        int32_t  index;
+        uint8_t  flags;
+        uint8_t  family;
+        uint8_t  prefix[4];
+        uint8_t  prefixlen;
+        uint8_t  destination[4];
+    } __attribute__((packed))
+]]
+
+structs.cmd_interface_address_ipv6 = ffi_typeof[[
+    struct {
+        int32_t  index;
+        uint8_t  flags;
+        uint8_t  family;
+        uint8_t  prefix[16];
+        uint8_t  prefixlen;
+        uint8_t  destination[16];
+    } __attribute__((packed))
+]]
+
+structs.cmd_route_zebra = ffi_typeof[[
+    struct {
+        uint8_t  type;
+        uint8_t  flags;
+        uint8_t  message;
+        uint16_t safi;
+        uint8_t  prefixlen;
+        uint8_t  destination[16];
+    } __attribute__((packed))
+]]
 
 return structs

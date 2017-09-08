@@ -59,7 +59,6 @@ local function _pass_packets (self, ilink, olink, cb)
          local p = l_receive(ilink)
          local newp = cb(self, p)
          if type(newp) ~= "cdata" and newp == false then
-            -- Do not transmit
             p_free(p)
          else
             if newp and p ~= newp then

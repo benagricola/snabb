@@ -117,7 +117,6 @@ function LPM4_trie:add(ip, length, key)
   end
 end
 function LPM4_trie:remove(ip, length)
-
   local ts = self.lpm4_trie
   local t = 0
   local prevt

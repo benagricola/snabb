@@ -246,7 +246,7 @@ function selftest (options)
    print(("Created %d on-demand memory mappings with SIGSEGV handler."):format(
          new_demand_mappings))
    assert(new_demand_mappings >= #dmapointers)
-   -- Now access it and rely on the SIGSEGV handler to 
+   -- Now access it and rely on the SIGSEGV handler to
    print("HugeTLB page allocation OK.")
 end
 

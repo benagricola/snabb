@@ -113,11 +113,19 @@ function zAPIRouterCtrl:send_interfaces(cmd, zmsg_opt)
 
 	p_zebra_interface:type(cmd)
 	self:send(p_zebra_interface)
+
+	local p_zebra_address = zm.ZebraInterfaceAddress:new(zmsg_opt)
+	p_zebra_address:value('index', index)
+	p_zebra_address:value('family', 2)
+	p_zebra_address:value('prefix', int.ip)
+	p_zebra_address:value('prefixlen', int.prefix)
+	p_zebra_address:type(zc.CMD_INTERFACE_ADDRESS_ADD)
+	self:send(p_zebra_address)
     end
     return
 end
 
-local function process(self, p)
+local function process_msg(self, p)
     local address    = self.address
     local interfaces = self.interfaces
     local port       = self.port
@@ -137,13 +145,18 @@ local function process(self, p)
 
     local body_mem, body_size = dgram:payload()
 
+    local msg_length = tonumber(p_zebra:length())
+    local body_length = tonumber((p_zebra:length() - p_zebra:sizeof()))
+
+    local remaining = body_size - body_length
+
     local p_zebra_msg
 
     if cmd == zc.CMD_HELLO then
         p_zebra_msg = zm.ZebraHello:new_from_mem(body_mem, zmsg_opt)
 	if not p_zebra_msg then
 	    z_print('Unable to parse ZServ CMD_HELLO msg')
-	    return true -- Free p
+	    return remaining -- Free p
 	end
 
         local route_type = p_zebra_msg:value('route_type')
@@ -162,7 +175,7 @@ local function process(self, p)
         -- Send our interfaces
         self:send_interfaces(zc.CMD_INTERFACE_ADD, zmsg_opt)
 
-	return true -- Free p
+	return remaining -- Free p
     end
 
     local peer = self.peer
@@ -171,42 +184,41 @@ local function process(self, p)
         -- Reply with our own ROUTER_ID_ADD
         z_print('Received ROUTER_ID_ADD from peer - setting active and replying with ROUTER_ID_UPDATE...')
         peer.pending = false
-	return true -- Free p
+	return remaining -- Free p
     end
 
     if cmd == zc.CMD_INTERFACE_ADD then
         -- Client may have no interfaces
-        if body_size == 0 then
-            z_print('Peer has with no interfaces...')
-	    return true -- Free p
+        if body_length == 0 then
+            z_print('Peer has no interfaces...')
+	    return remaining -- Free p
         end
 
         p_zebra_msg = zm.ZebraInterface:new_from_mem(body_mem, zmsg_opt)
 	if not p_zebra_msg then
 	    z_print('Unable to decode Zebra INTERFACE_ADD')
-	    return true -- Free p
+	    return remaining -- Free p
         else
-            z_print('Received INTERFACE_ADD: ' .. p_zebra_msg:value('name', nil, 'string'))
-            transmit(self.output.print, p)
-            return nil
+            -- TODO: Stream nonstatic interface settings
+            z_print('Received INTERFACE_ADD: Index - ' .. p_zebra_msg:value('index') .. ' Status - ' .. p_zebra_msg:value('status'))
+            return remaining
 	end
-        return true -- Free p
+        return remaining -- Free p
     end
 
     if cmd == zc.CMD_REDISTRIBUTE_ADD then
         p_zebra_msg = zm.ZebraRedistribute:new_from_mem(body_mem, zmsg_opt)
 	if not p_zebra_msg then
 	    z_print('Unable to parse ZServ CMD_REDISTRIBUTE_ADD msg')
-            transmit(self.output.print, p)
-	    return nil
+	    return remaining
 	end
         local route_type = p_zebra_msg:value('route_type')
         z_print('Peer is asking us to send routes of type ' .. zc.ROUTE[route_type])
         peer.receiving_route_type = route_type
-        return true -- Free p
+        return remaining -- Free p
     end
 
-    return true -- Free p if no command matched
+    return remaining -- Free p if no command matched
 end
 
 function zAPIRouterCtrl:push()
@@ -217,10 +229,21 @@ function zAPIRouterCtrl:push()
     for _ = 1, readable do
         -- Receive packet
         local p = receive(lnk)
-        local status = process(self, p)
-        if status then
-            packet.free(p)
-        end
+	local length = p.length
+        local continue = true
+        local remaining
+	while continue do
+            -- process_msg returns the number of bytes remaining in p
+            -- zebra protocol is streaming so multiple commands can exist
+            -- in one packet.
+            remaining = process_msg(self, p)
+	    if remaining > 0 then
+	        p = packet.shiftleft(p, length - remaining)
+	    else
+	        continue = false
+		packet.free(p)
+	    end
+	end
     end
 end
 

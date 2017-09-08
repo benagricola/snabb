@@ -41,7 +41,9 @@ function LPM4:search_entry_string (ip)
    return self:search_entry(ip4.parse(ip))
 end
 function LPM4:search (ip)
-   return self:search_entry(ip).key
+   local entry = self:search_entry(ip)
+   if entry then return entry.key end
+   return nil
 end
 function LPM4:search_string (str)
    return self:search(ip4.parse(str))

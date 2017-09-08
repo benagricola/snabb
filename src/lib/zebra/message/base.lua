@@ -100,7 +100,7 @@ end
 
 function ZebraMessage:_getField(field, typ)
     if typ == 'string' then
-        return ffi_string(self._data[field])
+        return ffi_string(self._data[field], ffi_sizeof(self._data[field]))
     end
     return self._data[field]
 end

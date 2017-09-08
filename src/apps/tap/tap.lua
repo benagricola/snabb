@@ -122,21 +122,20 @@ function Tap:new (conf)
       -- Set status to "up"
       _status(sock, ifr, 1)
    end
-   -- This shite doesnt work
-   -- local mtu_eff = conf.mtu - (conf.mtu_fixup and conf.mtu_offset) or 0
-   -- local mtu_set = conf.mtu_set
-   -- if mtu_set == nil then
-   --    mtu_set = ephemeral
-   -- end
-   -- if mtu_set then
-   --    _mtu(sock, ifr, mtu_eff)
-   -- else
-   --    local mtu_configured = _mtu(sock, ifr)
-   --    assert(mtu_configured == mtu_eff,
-   --           "Mismatch of IP MTU on tap device " .. conf.name
-   --              .. ": expected " .. mtu_eff .. ", configured "
-   --              .. mtu_configured)
-   -- end
+   local mtu_eff = conf.mtu - (conf.mtu_fixup and conf.mtu_offset) or 0
+   local mtu_set = conf.mtu_set
+   if mtu_set == nil then
+      mtu_set = ephemeral
+   end
+   if mtu_set then
+      _mtu(sock, ifr, mtu_eff)
+   else
+      local mtu_configured = _mtu(sock, ifr)
+      assert(mtu_configured == mtu_eff,
+             "Mismatch of IP MTU on tap device " .. conf.name
+                .. ": expected " .. mtu_eff .. ", configured "
+                .. mtu_configured)
+   end
 
    return setmetatable({fd = fd,
                         sock = sock,

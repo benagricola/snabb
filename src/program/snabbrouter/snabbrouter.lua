@@ -135,16 +135,17 @@ function run(args)
 
     local conf = yang.load_configuration('router.conf', { schema_name = 'snabb-router-v1'})
 
-    local ctrl_ips = {}
+    local addresses = {}
 
     local interfaces = {}
 
     for int_name, params in pairs(conf.router_config.interface) do
-        local ip  = params.ip[1]
-        local mac = params.mac or nil
+        local ip     = params.address.ip
+        local prefix = params.address.prefix
+        local mac    = params.mac or nil
 
         -- TODO: Hand off Multiple IPs to ARP / Router
-        log_info('Configuring ' .. params.type .. ' interface ' .. int_name .. ' with address ' .. ipv4_ntop(ip))
+        log_info('Configuring ' .. params.type .. ' interface ' .. int_name .. ' with address ' .. ipv4_ntop(ip) .. '/' .. prefix)
         local interface, ports = config_interface(c, int_name)
 
         if not interface then
@@ -154,7 +155,7 @@ function run(args)
 
         local converted_ipv4 = convert_ipv4(ip)
 
-        ctrl_ips[#ctrl_ips+1] = converted_ipv4
+        addresses[#addresses+1] = { ip = converted_ipv4, prefix = prefix }
 
         -- Allocate random mac addr for this interface
         if not mac then
@@ -164,7 +165,7 @@ function run(args)
         config.app(c, "arp_" .. int_name, arp.ARP, { self_ip = converted_ipv4, self_mac = mac, next_ip = ipv4:pton('10.231.14.2') })
 
 
-        interfaces[#interfaces+1] = { name = int_name, mac = mac, ip = converted_ipv4 }
+        interfaces[#interfaces+1] = { name = int_name, mac = mac, ip = converted_ipv4, prefix = prefix }
 
         config.app(c, "icmp_" .. int_name, lwipv4.ICMPEcho, { address = converted_ipv4 })
 
@@ -188,7 +189,7 @@ function run(args)
     end
 
     -- Create zAPIRouterControl App. This can be configured to load routes into other apps
-    config.app(c, "router", router.zAPIRouterCtrl, { addresses = ctrl_ips, interfaces = interfaces } )
+    config.app(c, "router", router.zAPIRouterCtrl, { addresses = addresses, interfaces = interfaces } )
 
     config.app(c, "ctrlsock",  usock.UnixSocket, { filename = conf.router_config.socket, listen = true, mode = 'stream'})
     config.link(c, 'ctrlsock.tx -> router.ctrl')
