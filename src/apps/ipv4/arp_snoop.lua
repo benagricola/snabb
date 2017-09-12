@@ -1,3 +1,5 @@
+-- Use of this source code is governed by the Apache 2.0 license; see COPYING.
+
 -- ARP snooping application.
 -- Snoops on arp replies from southbound links, forwards other traffic
 -- Rewrites traffic from northbound links based on stored mac, otherwise drops it
@@ -23,6 +25,7 @@ local C = ffi.C
 local receive, transmit = link.receive, link.transmit
 local htons, ntohs = lib.htons, lib.ntohs
 local math_min = math.min
+local ffi_cast, ffi_new, ffi_copy = ffi.cast, ffi.new, ffi.copy
 local packet_free, packet_clone = packet.free, packet.clone
 local l_transmit, l_receive, l_nreadable, l_nwritable = link.transmit, link.receive, link.nreadable, link.nwritable
 
@@ -71,7 +74,7 @@ local function make_arp_request_tpl(src_mac, src_ipv4)
    local pkt = packet.allocate()
    pkt.length = ether_arp_header_len
 
-   local h = ffi.cast(ether_arp_header_ptr_t, pkt.data)
+   local h = ffi_cast(ether_arp_header_ptr_t, pkt.data)
    h.ether.dhost = mac_broadcast
    h.ether.shost = src_mac
    h.ether.type = htons(ether_type_arp)
@@ -86,13 +89,13 @@ end
 
 local function is_arp(p)
    if p.length < ether_arp_header_len then return false end
-   local h = ffi.cast(ether_arp_header_ptr_t, p.data)
+   local h = ffi_cast(ether_arp_header_ptr_t, p.data)
    return ntohs(h.ether.type) == ether_type_arp
 end
 
 local function copy_len(src, len)
-   local dst = ffi.new('uint8_t['..len..']')
-   ffi.copy(dst, src, len)
+   local dst = ffi_new('uint8_t['..len..']')
+   ffi_copy(dst, src, len)
    return dst
 end
 
@@ -207,7 +210,7 @@ function ARPSnoop:snoop_south(input, output)
             -- Packet too short.
             packet_free(p)
         elseif is_arp(p) then
-            local h = ffi.cast(ether_arp_header_ptr_t, p.data)
+            local h = ffi_cast(ether_arp_header_ptr_t, p.data)
 
             -- Snoop arp reply packet
             if self:is_arp_reply(h) then

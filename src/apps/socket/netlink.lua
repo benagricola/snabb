@@ -45,7 +45,7 @@ function Netlink:new(conf)
         nexthops_v4_idx  = {},
         nexthops_v4_addr = {},
         nexthops_v6_idx  = {},
-        nexthops_v6_name = {},
+        nexthops_v6_addr = {},
 
         state = 'state_init',
 
@@ -56,7 +56,7 @@ function Netlink:new(conf)
 
         rt_pending    = 0,
         rt_build_last = 0,
-        rt_build_int  = 5, -- Rebuild routing tables every 5 seconds at minimum
+        rt_build_int  = 1, -- Rebuild routing tables every 5 seconds at minimum
 
         -- Load full routing table by default
         reload = ((conf.reload == false) and false) or true,
@@ -108,81 +108,53 @@ function Netlink:state_routes()
 end
 
 function Netlink:resolve_nexthop(wire_ip)
-    print('Searching for nexthop ' .. ipv4:ntop(wire_ip))
     local addr_index = self.fib_v4:search_bytes(wire_ip)
     if not addr_index then
         return nil
     end
-
-    print('Found next hop index ' .. addr_index)
-
     return self.nexthops_v4_idx[addr_index]
 end
 
 function Netlink:add_route(nh_details)
+    local nh_idx_tab = self.nexthops_v4_idx
     local prefix  = tostring(nh_details.dest) .. '/' .. nh_details.dst_len
     local gateway = tostring(nh_details.gw)
-    local oif_idx = nh_details.oif
+    local oif_idx = nh_details.index
 
     -- Validate next hop interface.
     -- If this isn't an interface we manage, ignore the route - we can't route to it anyway
-
     local out_index = self.linux_map[oif_idx]
-
     if not out_index then
-        print('Unable to add route to ' .. prefix .. ' via ' .. gateway .. ' - outbound interface unknown.')
         return
     end
 
     local intf = self.interfaces[out_index]
-
     if not intf then
         return
     end
 
-    print('Route added ' .. prefix .. ' via ' .. gateway .. ' (' .. intf.phy_if .. ')')
+    local gw_int = lpm_ipv4.parse(gateway)
+    local direct = (gw_int == 0)
 
-    -- Turn gateway into an integer, store nexthop details by numeric gateway addr
-    local gw_addr = lpm_ipv4.parse(gateway)
-    local nh_idx = self.nexthops_v4_addr[gw_addr]
+    local nh_idx = #nh_idx_tab + 1
 
-    if not nh_idx then
-        local next_idx = #self.nexthops_v4_idx+1
+	local gateway_wire = ipv4:pton(gateway)
+	nh_idx_tab[nh_idx] = { nh = nh_details, intf = out_index, addr = gateway, direct = direct, addr_wire = gateway_wire }
 
-        local direct = false
-        if gw_addr == 0 then
-            direct = true
-        end
-
-        local gateway_wire = ipv4:pton(gateway)
-        self.nexthops_v4_idx[next_idx] = { nh = nh_details, intf = out_index, addr = gateway, direct = direct, addr_wire = gateway_wire }
-        self.nexthops_v4_addr[gw_addr] = next_idx
-        nh_idx = next_idx
-    end
-
-    if not nh_idx then
-        print('Unable to resolve nexthop for ' .. gw_addr)
-        return
-    end
-
-    -- TODO: If route points to default gateway, resolve default on this int? (Not sure if necessary)
-    -- TODO: Search?
-
-    print('Adding ' .. prefix .. ' with gw ' .. gw_addr .. ' and NH index ' .. nh_idx)
+    print('Adding ' .. prefix .. ' with gw ' .. gateway .. ' and NH index ' .. nh_idx)
     self.fib_v4:add_string(prefix, nh_idx)
     self.rt_pending = self.rt_pending + 1
 end
 
 function Netlink:del_route(nh_details)
+    local nh_idx_tab = self.nexthops_v4_idx
     local prefix  = tostring(nh_details.dest) .. '/' .. nh_details.dst_len
     local gateway = tostring(nh_details.gw)
-    local oif_idx = nh_details.oif
-
+    local oif_idx = nh_details.index
 
     local out_index = self.linux_map[oif_idx]
 
     if not out_index then
-        print('Unable to delete route to ' .. prefix .. ' via ' .. gateway .. ' - outbound interface unknown.')
         return
     end
 
@@ -192,7 +164,9 @@ function Netlink:del_route(nh_details)
         return
     end
 
-    -- Resolve NH interface
+	local gateway_wire = ipv4:pton(gateway)
+
+    -- Todo: clean up unused next hops when routes are removed!
     self.fib_v4:remove_string(prefix)
     self.rt_pending = self.rt_pending + 1
 

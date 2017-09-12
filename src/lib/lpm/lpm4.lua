@@ -236,6 +236,7 @@ function selftest ()
    s:add_string("0.0.0.10/32", 11)
    assert(10 == s:search_bytes(ffi.new("uint8_t[4]", {10,0,0,0})))
    assert(11 == s:search_bytes(ffi.new("uint8_t[4]", {0,0,0,10})))
+   assert(nil == s:search_bytes(ffi.new("uint8_t[4]", {0,0,1,10})))
 end
 function LPM4:selftest (cfg, millions)
    assert(self, "selftest must be called with : ")

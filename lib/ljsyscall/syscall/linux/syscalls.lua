@@ -2,7 +2,7 @@
 
 local require, error, assert, tonumber, tostring,
 setmetatable, pairs, ipairs, unpack, rawget, rawset,
-pcall, type, table, string = 
+pcall, type, table, string =
 require, error, assert, tonumber, tostring,
 setmetatable, pairs, ipairs, unpack, rawget, rawset,
 pcall, type, table, string
@@ -460,6 +460,7 @@ end
 function S.get_mempolicy(mode, mask, addr, flags)
   mode = mode or t.int1()
   mask = mktype(t.bitmask, mask)
+  mask.size = 1024
   local ret, err = C.get_mempolicy(mode, mask.mask, mask.size, addr or 0, c.MPOL_FLAG[flags])
   if ret == -1 then return nil, t.error(err or errno()) end
   return { mode=mode[0], mask=mask }

@@ -5,6 +5,7 @@ local S     = require("syscall")
 
 local nl    = S.nl
 local engine     = require("core.app")
+local numa   = require("lib.numa")
 
 local yang       = require('lib.yang.yang')
 
@@ -87,41 +88,25 @@ function run(args)
         -- Connect to TAP interface for each routable port
         config.app(c, tap_name, tap.Tap, { name = tap_if, mtu_set=true })
 
-        -- Snoop on ARP replies from PHY Input and bypass to output
-        config.app(c, arp_name, arpsnoop.ARPSnoop, { self_mac = mac, self_ip = converted_ipv4 })
-
-        -- Create DTCB App per interface pair
-        -- Redirects packets based on match with pflua filter
-        config.app(c, 'dtcb', dtcb.DTCBridge, {
-            ctrl_filter     = "arp or dst host " .. ipv4_ntop(ip),
-            loopback_filter = "dst host 1.9.4.2"
-        })
-
         config.app(c, mux_name, basic.Join, {})
 
-        -- Link mux (Join) to dataplane input
+        config.app(c, arp_name, arpsnoop.ARPSnoop, { self_mac = mac, self_ip = converted_ipv4 })
+
+        -- Link mux (Join) to dataplane int
         config.link(c, mux_name .. '.output -> ' .. phy_name .. '.input')
 
-        -- Link dataplane interface to arp south
-        config.link(c, phy_name .. '.output -> ' .. arp_name .. '.south')
+        -- Link dataplane interface to router
+        config.link(c, phy_name .. '.output -> router.' .. phy_name)
+
+        -- Link router output ctrl plane ifs to arp snoop south
+        config.link(c, 'router.' .. tap_name .. ' -> ' .. arp_name .. '.south')
+
+        -- Link arp north to tap input
+        config.link(c, arp_name .. '.north -> ' .. tap_name .. '.input')
         config.link(c, arp_name .. '.south -> ' .. mux_name .. '.arp_in')
-
-        -- Link arp north to bridge south
-        config.link(c, arp_name .. '.north -> dtcb.input')
-
-        -- Link ctrl interface to tap input
-        config.link(c, 'dtcb.ctrl -> ' .. tap_name .. '.input')
-
-        -- Link loopback output to linux loopback if
-        config.link(c, 'dtcb.loopback -> loopback.input')
-
-        -- Link dataplane traffic to router
-        config.link(c, 'dtcb.output -> router.' .. phy_name)
 
         -- Link routed traffic back to data plane
         config.link(c, 'router.' .. phy_name .. ' -> ' .. mux_name .. '.router_in')
-
-        config.link(c, 'loopback.output -> ' .. mux_name .. '.loop_in')
 
         -- Link tap output back to dataplane interface
         config.link(c, tap_name .. '.output -> ' .. mux_name .. '.tap_in')
@@ -130,7 +115,7 @@ function run(args)
     end
 
     -- Create loopback interface
-    config.app(c, 'loopback', tap.Tap, { name = 'loop0', mtu_set=true })
+    -- config.app(c, 'loopback', tap.Tap, { name = 'loop0', mtu_set=true })
 
   --  config.app(c, "tee", basic.Tee, {})
 
@@ -141,8 +126,12 @@ function run(args)
    --  config.link(c, 'ctrlsock.tx -> router.ctrl')
    --  config.link(c, 'router.ctrl -> ctrlsock.rx')
 
-    config.app(c,  'pcap',  pcap.PcapWriter, '/root/dataplane.pcap')
     config.app(c,  'fib',  nlsock.Netlink, { interfaces = interfaces, tap_map = tap_map })
+
+    numa.unbind_numa_node()
+    numa.bind_to_cpu(2)
+    numa.prevent_preemption(1)
+
 
     engine.busywait = true
     engine.configure(c)
