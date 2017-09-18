@@ -58,6 +58,7 @@ function run(args)
         local ip       = params.address.ip
         local prefix   = params.address.prefix
         local mac      = params.mac or nil
+        local mtu      = params.mtu or 1500
         local tap_if   = params.tap
         local phy_name = 'phy_' .. int_idx
         local tap_name = 'tap_' .. int_idx
@@ -70,7 +71,7 @@ function run(args)
         local converted_ipv4 = convert_ipv4(ip)
 
 
-        local interface = { tap_name = tap_name, phy_name = phy_name, mux_name = mux_name, mac = mac, ip = converted_ipv4, prefix = prefix, phy_if = phy_if }
+        local interface = { tap_name = tap_name, phy_name = phy_name, mux_name = mux_name, mac = mac, ip = converted_ipv4, prefix = prefix, phy_if = phy_if, mtu = mtu }
 
         -- Store interface details by index
         interfaces[int_idx] = interface

@@ -20,16 +20,19 @@ local math      = require("math")
 local packet    = require("core.packet")
 local pmu       = require("lib.pmu")
 
+local bit_band     = bit.band
 local bit_rshift   = bit.rshift
 local counter_add  = counter.add
 local ffi_cast     = ffi.cast
-local ffi_typeof   = ffi.typeof
-local ffi_new      = ffi.new
 local ffi_copy     = ffi.copy
+local ffi_fill     = ffi.fill
+local ffi_new      = ffi.new
+local ffi_typeof   = ffi.typeof
 local htons, ntohs = lib.htons, lib.ntohs
 local htonl, ntohl = lib.htonl, lib.ntohl
 local math_min     = math.min
 local now          = app.now
+local uint16_ptr_t = ffi_typeof("uint16_t*")
 
 local p_free, p_clone, p_resize, p_append = packet.free, packet.clone, packet.resize, packet.append
 local l_transmit, l_receive, l_nreadable, l_nwritable = link.transmit, link.receive, link.nreadable, link.nwritable
@@ -51,8 +54,11 @@ local arp_hlen_ethernet  = 6
 local arp_plen_ipv4      = 4
 local ip_proto_icmp      = 1
 local ip_ttl_default     = 64
+local ip_df_mask         = 0x4000
 
 local icmp_reply_body_offset = e_hdr_len + ip_hdr_len + icmp_hdr_len + 4
+local icmp_reply_unused1_offset = icmp_reply_body_offset - 4
+local icmp_reply_unused2_offset = icmp_reply_body_offset - 2
 
 local ether_offset = e_hdr_len
 local ip_offset    = ether_offset + ip_hdr_len
@@ -155,6 +161,7 @@ function Route:new(conf)
             dropped_nomac   = {counter},
             dropped_nophy   = {counter},
             dropped_zerottl = {counter},
+            dropped_mtu     = {counter},
             dropped_invalid = {counter}
         }
     }
@@ -170,23 +177,42 @@ function Route:new(conf)
 end
 
 
-function Route:make_icmp_reply(p, ip_hdr, src_ip, typ, code)
+function Route:send_icmp_reply(p, eth_hdr, ip_hdr, link_config, typ, code, unused_1, unused_2)
+    local shm = self.shm
+    local src_ip, dst_if = link_config.ip, link_config.phy_name
+
     -- Turn existing IP packet p into ICMP packet!
     -- Copies existing IP header + data forwards,
     -- and initialises icmp header in the gap.
-    local data_len = p.length - e_hdr_len
+    local data_len = math_min(ip_hdr:total_length(), ip_hdr_len+12)
 
     -- Resize packet
     p.length = icmp_reply_body_offset + data_len
 
     -- Copy payload data (from IP header onwards) to end of packet
     ffi_copy(p.data + icmp_reply_body_offset, p.data + e_hdr_len, data_len)
+
+    -- Allow 'unused fields' (default 4 zeroed bytes) to be set to 16bit vars
+    if unused_1 then
+        ffi_cast(uint16_ptr_t, p.data + icmp_reply_unused1_offset )[0] = htons(unused_1)
+    else
+        ffi_fill(p.data + icmp_reply_unused1_offset, 2)
+    end
+
+    if unused_2 then
+        ffi_cast(uint16_ptr_t, p.data + icmp_reply_unused2_offset )[0] = htons(unused_2)
+    else
+        ffi_fill(p.data + icmp_reply_unused2_offset, 2)
+    end
+
     -- Initialise ICMP header in place
     local icmp_hdr = icmp:new_from_mem(p.data + ip_offset, icmp_hdr_len)
 
     -- Default to ICMP Echo Reply
     icmp_hdr:type(typ or 0)
     icmp_hdr:code(code or 0)
+
+    eth_hdr:swap()
     ip_hdr:protocol(ip_proto_icmp)
     ip_hdr:ttl(ip_ttl_default)
     ip_hdr:dst(ip_hdr:src())
@@ -194,7 +220,20 @@ function Route:make_icmp_reply(p, ip_hdr, src_ip, typ, code)
 
     icmp_hdr:checksum(p.data + icmp_offset, data_len)
     ip_hdr:total_length(data_len + icmp_hdr_len + ip_hdr_len)
+
+    -- Have to fully calculate the checksum
     ip_hdr:checksum()
+
+    -- Modified packet is routed as-normal
+    local out_link = self.output[dst_if]
+    if not out_link then
+        counter_add(shm.dropped_nophy)
+        p_free(p)
+        return
+    end
+
+    l_transmit(out_link, p)
+    return true
 end
 
 
@@ -346,7 +385,6 @@ function Route:get_nexthop(wire_ip)
         })
     end
 
-
     print('Next hop resolved to interface ' .. nh.int_idx .. ' with GW address ' .. ipv4:ntop(nh.next_ip) .. ' and MAC addr ' .. ethernet:ntop(nh.dst_mac) .. ' expiring in ' .. math.floor((nh.expires - now())) .. ' seconds')
 
     -- Add to cache
@@ -401,7 +439,6 @@ function Route:route(link_config, p)
         counter_add(shm.dropped_invalid)
         p_free(p)
         return
-
     end
 
     -- Drop unknown layer3 traffic
@@ -421,22 +458,22 @@ function Route:route(link_config, p)
     -- Validate TTL or reply with an error
     if ip_hdr:ttl() <= 1 then
         -- Turn existing packet into ICMP reply packet
-        self:make_icmp_reply(p, ip_hdr, link_config.ip, 11, 0)
-
-        print('Sending TTL expired ICMP reply to ' .. ipv4:ntop(ip_hdr:dst()) .. ' from ' .. ipv4:ntop(ip_hdr:src()))
         counter_add(shm.dropped_zerottl)
+        return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 11, 0)
     end
 
-
+    -- Get packet next hop, cached
     local ip_dst = ip_hdr:dst()
-
     local nh = self:get_nexthop(ip_dst)
 
+    -- If no next hop, drop packet
     if not nh then
         print('Unable to resolve next-hop IP or MAC, dropping...')
         p_free(p)
         return
     end
+
+    -- Select correct interface or drop if not managed
     local int = self.interfaces[nh.int_idx]
     local l_out    = self.output
     local out_link = l_out[int.phy_name]
@@ -447,22 +484,39 @@ function Route:route(link_config, p)
         return
     end
 
+    -- If packet length minus ether header is bigger than the outbound MTU
+    -- TODO: Clean this up to avoid code repetition
+    -- TODO: Send outbound ICMP via inbound port without route lookup
+    -- We need to know the output link to decide what the MTU is
+    -- Once we know the MTU, we need to return the packet out of the received
+    -- port.
+
+    if (p.length - e_hdr_len) > int.mtu then
+        -- Then Check the DF bit. If set, drop packet. Send reply
+        if bit_band(ip_hdr:flags(), ip_df_mask) then
+            counter_add(shm.dropped_zerottl)
+
+            -- Set MTU in ICMP reply packet
+            return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 4, nil, int.mtu)
+        else
+            print('Packet length exceeds outbound link MTU but DF not set, fragging...')
+            -- TODO: Actually fragment packet
+        end
+    end
+
+    -- Rewrite ethernet src / dst
     ether_hdr:src(nh.src_mac)
     ether_hdr:dst(nh.dst_mac)
 
-    -- Set new TTL and modify the checksum
+    -- Set new TTL.
     ip_hdr:ttl(ip_hdr:ttl() - 1)
 
     -- Incrementally update checksum
     -- Subtracting 1 from the TTL involves *adding* 1 or 256 to the checksum - thanks ones complement
-    -- sum = ipptr->Checksum + 0x100;  /* increment checksum high byte*/
-    -- ipptr->Checksum = (sum + (sum>>16)) /* add carry */
-
+    -- TODO: May need further rshift for larger packets?
     local h = ip_hdr:header()
     local sum = ntohs(h.checksum) + 0x100
     h.checksum = htons(sum + bit_rshift(sum, 16))
-
-    -- TODO: MTU Check and discard (DF SET?) or fragment
 
     -- Transmit the packet
     l_transmit(out_link, p)
