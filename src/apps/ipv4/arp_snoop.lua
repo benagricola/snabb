@@ -205,11 +205,7 @@ function ARPSnoop:snoop_south(input, output)
     local p_count = math_min(l_nreadable(input), l_nwritable(output))
     for _ = 1, p_count do
         local p = l_receive(input)
-
-        if p.length < ether_header_len then
-            -- Packet too short.
-            packet_free(p)
-        elseif is_arp(p) then
+        if is_arp(p) then
             local h = ffi_cast(ether_arp_header_ptr_t, p.data)
 
             -- Snoop arp reply packet
@@ -225,20 +221,6 @@ function ARPSnoop:snoop_south(input, output)
     end
 end
 
-function ARPSnoop:forward_north(input, output)
-    local p_count = math_min(l_nreadable(input), l_nwritable(output))
-    for _ = 1, p_count do
-        local p = l_receive(input)
-
-        if p.length < ether_header_len then
-            -- Packet too short.
-            packet_free(p)
-        end
-
-        l_transmit(output, p)
-    end
-end
-
 function ARPSnoop:push()
    local isouth, osouth = self.input.south, self.output.south
 
@@ -246,9 +228,6 @@ function ARPSnoop:push()
    local onorth = self.output.north
 
    self:snoop_south(isouth, onorth)
-
-   -- Assume all north->south traffic has modified MAC from router
-   --self:forward_north(inorth, osouth)
 
    -- Send ARP requests for known addresses which are > self.arp_request_interval
    self:maybe_send_arp_request(osouth)

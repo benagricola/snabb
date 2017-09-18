@@ -70,7 +70,7 @@ function run(args)
         local converted_ipv4 = convert_ipv4(ip)
 
 
-        local interface = { tap_name = tap_name, phy_name = phy_name, arp_name = arp_name, mux_name = mux_name, mac = mac, ip = converted_ipv4, prefix = prefix, phy_if = phy_if }
+        local interface = { tap_name = tap_name, phy_name = phy_name, mux_name = mux_name, mac = mac, ip = converted_ipv4, prefix = prefix, phy_if = phy_if }
 
         -- Store interface details by index
         interfaces[int_idx] = interface
@@ -90,20 +90,14 @@ function run(args)
 
         config.app(c, mux_name, basic.Join, {})
 
-        config.app(c, arp_name, arpsnoop.ARPSnoop, { self_mac = mac, self_ip = converted_ipv4 })
-
         -- Link mux (Join) to dataplane int
         config.link(c, mux_name .. '.output -> ' .. phy_name .. '.input')
 
         -- Link dataplane interface to router
         config.link(c, phy_name .. '.output -> router.' .. phy_name)
 
-        -- Link router output ctrl plane ifs to arp snoop south
-        config.link(c, 'router.' .. tap_name .. ' -> ' .. arp_name .. '.south')
-
-        -- Link arp north to tap input
-        config.link(c, arp_name .. '.north -> ' .. tap_name .. '.input')
-        config.link(c, arp_name .. '.south -> ' .. mux_name .. '.arp_in')
+        -- Link router output ctrl plane ifs to tap device
+        config.link(c, 'router.' .. tap_name .. ' -> ' .. tap_name .. '.input')
 
         -- Link routed traffic back to data plane
         config.link(c, 'router.' .. phy_name .. ' -> ' .. mux_name .. '.router_in')
@@ -117,19 +111,15 @@ function run(args)
     -- Create loopback interface
     -- config.app(c, 'loopback', tap.Tap, { name = 'loop0', mtu_set=true })
 
-  --  config.app(c, "tee", basic.Tee, {})
-
     -- Configure
+    config.link(c, 'router.pcap -> pcap.input')
     config.app(c, 'router', route.Route, { fib_app = 'fib', interfaces = interfaces, tap_map = tap_map })
-   -- config.app(c,  'router', zapi.zAPIRouterCtrl, { addresses = addresses, interfaces = interfaces } )
-   -- config.app(c,  'ctrlsock',  usock.UnixSocket, { filename = conf.router_config.socket, listen = true, mode = 'stream'})
-   --  config.link(c, 'ctrlsock.tx -> router.ctrl')
-   --  config.link(c, 'router.ctrl -> ctrlsock.rx')
+    config.app(c, 'pcap', pcap.PcapWriter, 'arp-output.pcap')
 
     config.app(c,  'fib',  nlsock.Netlink, { interfaces = interfaces, tap_map = tap_map })
 
     numa.unbind_numa_node()
-    numa.bind_to_cpu(2)
+    numa.bind_to_cpu(1)
     numa.prevent_preemption(1)
 
 

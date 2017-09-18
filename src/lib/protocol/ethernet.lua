@@ -16,6 +16,7 @@ local ethernet = subClass(header)
 ethernet._name = "ethernet"
 ethernet._ulp = {
    class_map = {
+                  [0x0806] = "lib.protocol.arp",
                   [0x0800] = "lib.protocol.ipv4",
                   [0x86dd] = "lib.protocol.ipv6",
                 },
