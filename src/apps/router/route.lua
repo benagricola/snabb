@@ -21,7 +21,9 @@ local packet    = require("core.packet")
 local pmu       = require("lib.pmu")
 
 local bit_band     = bit.band
+local bit_bot      = bit.bor
 local bit_rshift   = bit.rshift
+local bit_lshift   = bit.lshift
 local counter_add  = counter.add
 local ffi_cast     = ffi.cast
 local ffi_copy     = ffi.copy
@@ -64,43 +66,39 @@ local ether_offset = e_hdr_len
 local ip_offset    = ether_offset + ip_hdr_len
 local icmp_offset  = ip_offset + icmp_hdr_len
 
-
 local mac_unknown = ethernet:pton("00:00:00:00:00:00")
 local mac_broadcast = ethernet:pton("ff:ff:ff:ff:ff:ff")
 
+local ERR_NO_ROUTE      = 1 -- Return network unreachable
+local ERR_NO_MAC        = 2 -- Return network unreachable (no next-hop mac)
+local ERR_NO_MAC_DIRECT = 3 -- Return host unreachable (no direct mac)
+
+local route_direct_bit = 0x80000000
+
 local fib_v4_entry_t = ffi_typeof([[
    struct {
-      uint8_t  next_ip[4];
-      uint8_t  src_mac[6];
-      uint8_t  dst_mac[6];
       uint32_t expires;
       uint32_t int_idx;
+      uint8_t  next_ip[4];
+      uint8_t  direct;
+      uint8_t  src_mac[6];
+      uint8_t  dst_mac[6];
    }
 ]])
 
 local mac_v4_entry_t = ffi_typeof([[
    struct {
       uint8_t  ip[4];
-      uint8_t  mac[6];
       uint32_t expires;
+      uint8_t  mac[6];
    }
 ]])
-
-
-local function copy_len(src, len)
-   local dst = ffi_new('uint8_t['..len..']')
-   ffi_copy(dst, src, len)
-   return dst
-end
 
 
 -- Create ARP packet with template fields set
 local function make_arp_request_tpl(src_mac, src_ipv4)
     local pkt  = packet.allocate()
     pkt.length = ethernet:sizeof() + arp:sizeof()
-
-    src_mac  = copy_len(src_mac, 6)
-    src_ipv4 = copy_len(src_ipv4, 4)
 
     local ethernet_hdr = ethernet:new_from_mem(pkt.data, e_hdr_len)
     local arp_hdr      = arp:new_from_mem(pkt.data + e_hdr_len, a_hdr_len)
@@ -184,7 +182,12 @@ function Route:send_icmp_reply(p, eth_hdr, ip_hdr, link_config, typ, code, unuse
     -- Turn existing IP packet p into ICMP packet!
     -- Copies existing IP header + data forwards,
     -- and initialises icmp header in the gap.
-    local data_len = math_min(ip_hdr:total_length(), ip_hdr_len+12)
+    local data_len = math_min(ip_hdr:total_length(), ip_hdr_len + 8)
+
+    -- Minimum packet size is 56 (56 - 20 - 4) = 32
+    if data_len < 32 then
+        data_len = 32
+    end
 
     -- Resize packet
     p.length = icmp_reply_body_offset + data_len
@@ -275,15 +278,12 @@ function Route:send_arp_request(phy, dst_ip)
 
     local ap = self.arp_packet[phy]
 
-    if not ap then
-        print('No ARP request template found for phy ' ..phy)
-        return
-    end
+    assert(ap, 'No ARP request template found for phy ' .. phy)
 
     local arp_hdr, p = unpack(ap)
 
     -- Set IP we're asking for
-    arp_hdr:tpa(copy_len(dst_ip, 4))
+    arp_hdr:tpa(dst_ip)
     l_transmit(output, p_clone(p))
 end
 
@@ -301,8 +301,8 @@ function Route:process_arp(phy, arp_hdr)
         return false
     end
 
-    local ip  = copy_len(arp_hdr:spa(), 4)
-    local mac = copy_len(arp_hdr:sha(), 6)
+    local ip  = arp_hdr:spa()
+    local mac = arp_hdr:sha()
 
     print(("Route: Resolved '%s' to %s on %s"):format(ipv4:ntop(ip), ethernet:ntop(mac), phy))
 
@@ -313,7 +313,6 @@ end
 function Route:get_nexthop(wire_ip)
     local cur_now = now()
 
-    local shm = self.shm
     local fib_cache_v4 = self.fib_cache_v4
 
     local nh_ptr = fib_cache_v4:lookup_ptr(wire_ip)
@@ -336,9 +335,11 @@ function Route:get_nexthop(wire_ip)
 
     local route = fib_app:resolve_nexthop(wire_ip)
 
+    local shm = self.shm
+
     if not route then
         counter_add(shm.dropped_noroute)
-        return
+        return nil, ERR_NO_ROUTE
     end
 
     local interface = self.interfaces[route.intf]
@@ -359,19 +360,40 @@ function Route:get_nexthop(wire_ip)
     local dst_mac = self:resolve_mac(interface.phy_name, next_ip)
 
     if not dst_mac then
-        print('Unable to resolve ' .. ipv4:ntop(next_ip) .. ' to MAC')
         counter_add(shm.dropped_nomac)
-        return
+
+        -- Different behaviour required for no mac for next-hop
+        -- vs no mac for directly connected devices (host vs. network unreachable)
+        if not route.direct then
+            return nil, ERR_NO_MAC
+        else
+            return nil, ERR_NO_MAC_DIRECT
+        end
     end
 
     local route_expires_in = cur_now + self.cache_age
+
+    -- Limit interface index to route_direct_bit so we can represent
+    -- directly connected interfaces with an index >= route_direct_bit
+    -- assert(route.intf < route_direct_bit, 'interface index overflowed')
+
+    -- local int_idx
+
+    -- If route is direct, set the high bit on int_idx
+    -- if route.direct then
+    --     int_idx = int_idx + route_direct_bit
+    -- else
+    --     int_idx = route.intf
+    -- end
+
+    local int_idx = route.intf
 
     -- Update existing FIB entry
     if nh then
         nh.next_ip = next_ip
         nh.src_mac = interface.mac
         nh.dst_mac = dst_mac
-        nh.int_idx = route.intf
+        nh.int_idx = int_idx
         nh.expires = route_expires_in
 
     -- Create new FIB entry
@@ -380,7 +402,7 @@ function Route:get_nexthop(wire_ip)
             next_ip = next_ip,
             src_mac = interface.mac,
             dst_mac = dst_mac,
-            int_idx = route.intf,
+            int_idx = int_idx,
             expires = route_expires_in
         })
     end
@@ -448,7 +470,7 @@ function Route:route(link_config, p)
         return
     end
 
-    -- Forward control traffic directly as Linux will do all of the checking below itself.
+    -- Forward control traffic directly as Linux will do all of the checking below itself (and more).
     if ip_hdr:dst_eq(link_config.ip) then
         counter_add(shm.control)
         l_transmit(ctrl_out, p)
@@ -464,11 +486,20 @@ function Route:route(link_config, p)
 
     -- Get packet next hop, cached
     local ip_dst = ip_hdr:dst()
-    local nh = self:get_nexthop(ip_dst)
+    local nh, err = self:get_nexthop(ip_dst)
 
     -- If no next hop, drop packet
     if not nh then
-        print('Unable to resolve next-hop IP or MAC, dropping...')
+        -- If no next-hop and no route, we have no way to know
+        -- if this is directly connected or not (we receive an
+        -- explicit route for directly connected interfaces).
+        -- Reply with icmp network unreachable
+        if err == ERR_NO_ROUTE or err == ERR_NO_MAC then
+            return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 0)
+        elseif err == ERR_NO_MAC_DIRECT then
+            return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 1)
+        end
+
         p_free(p)
         return
     end
@@ -490,14 +521,15 @@ function Route:route(link_config, p)
     -- We need to know the output link to decide what the MTU is
     -- Once we know the MTU, we need to return the packet out of the received
     -- port.
+    local mtu = int.mtu
 
-    if (p.length - e_hdr_len) > int.mtu then
+    if (p.length - e_hdr_len) > mtu then
         -- Then Check the DF bit. If set, drop packet. Send reply
         if bit_band(ip_hdr:flags(), ip_df_mask) then
-            counter_add(shm.dropped_zerottl)
+            counter_add(shm.dropped_mtu)
 
             -- Set MTU in ICMP reply packet
-            return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 4, nil, int.mtu)
+            return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 4, nil, mtu)
         else
             print('Packet length exceeds outbound link MTU but DF not set, fragging...')
             -- TODO: Actually fragment packet
