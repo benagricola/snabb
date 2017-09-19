@@ -14,11 +14,8 @@ local ipv4      = require("lib.protocol.ipv4")
 local ipv6      = require("lib.protocol.ipv6")
 local lib       = require("core.lib")
 local link      = require("core.link")
-local lpm_ipv4  = require("lib.lpm.ip4")
-local lru       = require("lib.lru")
 local math      = require("math")
 local packet    = require("core.packet")
-local pmu       = require("lib.pmu")
 
 local bit_band     = bit.band
 local bit_bot      = bit.bor
@@ -373,19 +370,6 @@ function Route:get_nexthop(wire_ip)
 
     local route_expires_in = cur_now + self.cache_age
 
-    -- Limit interface index to route_direct_bit so we can represent
-    -- directly connected interfaces with an index >= route_direct_bit
-    -- assert(route.intf < route_direct_bit, 'interface index overflowed')
-
-    -- local int_idx
-
-    -- If route is direct, set the high bit on int_idx
-    -- if route.direct then
-    --     int_idx = int_idx + route_direct_bit
-    -- else
-    --     int_idx = route.intf
-    -- end
-
     local int_idx = route.intf
 
     -- Update existing FIB entry
@@ -415,7 +399,7 @@ function Route:get_nexthop(wire_ip)
 end
 
 
-function Route:route(link_config, p)
+function Route:route(ctrl_link, link_config, p)
     local shm = self.shm
 
     if p.length < e_hdr_len then
@@ -433,15 +417,13 @@ function Route:route(link_config, p)
         return
     end
 
-    local ctrl_out = self.output[link_config.tap_name]
-
     local ether_type = ether_hdr:type()
 
     -- Forward ARP frames to control channel
     if ether_type == ether_type_arp then
         local arp_hdr = arp:new_from_mem(p.data + e_hdr_len, a_hdr_len)
         self:process_arp(link_config.phy_name, arp_hdr)
-        l_transmit(ctrl_out, p)
+        l_transmit(ctrl_link, p)
         counter_add(shm.arp)
         counter_add(shm.control)
         return
@@ -458,9 +440,6 @@ function Route:route(link_config, p)
     elseif ether_type == ether_type_ipv6 then
         -- TODO: Implement IPv6 processing
         counter_add(shm.ipv6)
-        counter_add(shm.dropped_invalid)
-        p_free(p)
-        return
     end
 
     -- Drop unknown layer3 traffic
@@ -470,17 +449,17 @@ function Route:route(link_config, p)
         return
     end
 
-    -- Forward control traffic directly as Linux will do all of the checking below itself (and more).
+    -- Forward control traffic directly.
     if ip_hdr:dst_eq(link_config.ip) then
         counter_add(shm.control)
-        l_transmit(ctrl_out, p)
+        l_transmit(ctrl_link, p)
         return
     end
 
     -- Validate TTL or reply with an error
     if ip_hdr:ttl() <= 1 then
-        -- Turn existing packet into ICMP reply packet
         counter_add(shm.dropped_zerottl)
+        -- TTL Exceeded in Transit
         return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 11, 0)
     end
 
@@ -490,13 +469,15 @@ function Route:route(link_config, p)
 
     -- If no next hop, drop packet
     if not nh then
-        -- If no next-hop and no route, we have no way to know
-        -- if this is directly connected or not (we receive an
-        -- explicit route for directly connected interfaces).
+        -- If no route, we have no way to know if this is
+        -- directly connected or not (we receive an explicit
+        -- route from netlink for directly connected interfaces).
         -- Reply with icmp network unreachable
         if err == ERR_NO_ROUTE or err == ERR_NO_MAC then
+            -- Network Unreachable
             return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 0)
         elseif err == ERR_NO_MAC_DIRECT then
+            -- Host Unreachable
             return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 1)
         end
 
@@ -528,7 +509,7 @@ function Route:route(link_config, p)
         if bit_band(ip_hdr:flags(), ip_df_mask) then
             counter_add(shm.dropped_mtu)
 
-            -- Set MTU in ICMP reply packet
+            -- Destination Unreachable (Frag needed and DF set)
             return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 4, nil, mtu)
         else
             print('Packet length exceeds outbound link MTU but DF not set, fragging...')
@@ -545,7 +526,7 @@ function Route:route(link_config, p)
 
     -- Incrementally update checksum
     -- Subtracting 1 from the TTL involves *adding* 1 or 256 to the checksum - thanks ones complement
-    -- TODO: May need further rshift for larger packets?
+    -- TODO: May need further rshift? Seems to work for the moment??
     local h = ip_hdr:header()
     local sum = ntohs(h.checksum) + 0x100
     h.checksum = htons(sum + bit_rshift(sum, 16))
@@ -561,15 +542,20 @@ function Route:push()
     local i_names  = self.int_names
     local i_config = self.interfaces
     local l_in     = self.input
+    local l_out    = self.output
 
     -- Iterate over interface names and resolve to link
     for _, link_name in ipairs(i_names) do
-        local in_link = l_in[link_name]
+        local link_config = i_config[link_name]
+
+        local in_link   = l_in[link_name]
+        local ctrl_link = l_out[link_config.tap_name]
+
         if in_link then
             local p_count = l_nreadable(in_link)
             for _ = 1, p_count do
                 local p = l_receive(in_link)
-                self:route(i_config[link_name], p)
+                self:route(ctrl_link, link_config, p)
             end
         end
     end
