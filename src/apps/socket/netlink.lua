@@ -9,6 +9,7 @@ local bit = require("bit")
 local now  = require("core.app").now
 
 local ipv4 = require("lib.protocol.ipv4")
+local ethernet = require("lib.protocol.ethernet")
 local nlutil = require('apps.socket.nlutil').NetlinkUtil
 local lpm_ipv4 = require('lib.lpm.ip4')
 
@@ -196,6 +197,13 @@ function Netlink:new_link(link_details)
     end
 
     self.linux_map[index] = phy_index
+
+    for k, v in pairs(intf) do
+        print(k, tostring(v))
+    end
+    link_details:address(ipv4:ntop(intf.ip) .. '/' .. intf.prefix)
+    link_details:setmtu(intf.mtu)
+    link_details:setmac(ethernet:ntop(intf.mac))
 
     -- local ifs = self.interfaces
     -- -- If we have a configuration for this interface, then configure it!

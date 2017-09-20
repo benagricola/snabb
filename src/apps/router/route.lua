@@ -8,6 +8,7 @@ local constants = require("apps.lwaftr.constants")
 local counter   = require("core.counter")
 local datagram  = require("lib.protocol.datagram")
 local ethernet  = require("lib.protocol.ethernet")
+local rtypes    = require("apps.router.types")
 local ffi       = require("ffi")
 local icmp      = require("lib.protocol.icmp.header")
 local ipv4      = require("lib.protocol.ipv4")
@@ -22,6 +23,7 @@ local bit_bot      = bit.bor
 local bit_rshift   = bit.rshift
 local bit_lshift   = bit.lshift
 local counter_add  = counter.add
+local C            = ffi.C
 local ffi_cast     = ffi.cast
 local ffi_copy     = ffi.copy
 local ffi_fill     = ffi.fill
@@ -91,6 +93,14 @@ local mac_v4_entry_t = ffi_typeof([[
    }
 ]])
 
+local t = nil
+local timer_start = function()
+    t = tonumber(C.get_time_ns())
+end
+
+local timer_end = function(str)
+    print(str .. ': ' .. (tonumber(C.get_time_ns()) - t) .. 'ns')
+end
 
 -- Create ARP packet with template fields set
 local function make_arp_request_tpl(src_mac, src_ipv4)
@@ -409,7 +419,10 @@ function Route:route(ctrl_link, link_config, p)
        return
     end
 
-    local ether_hdr = ethernet:new_from_mem(p.data, e_hdr_len)
+    timer_start()
+    local ether_hdr = ffi_cast(rtypes.ethernet_header_ptr_type, p.data, e_hdr_len)
+    timer_end('Ether header cast')
+--    local ether_hdr = ethernet:new_from_mem(p.data, e_hdr_len)
 
     if not ether_hdr then
         counter_add(shm.dropped_invalid)
@@ -536,6 +549,10 @@ function Route:route(ctrl_link, link_config, p)
     counter_add(shm.forwarded)
 end
 
+local avg_latency = 0
+local exp_value = math.exp(-1/10)
+local next_report = 0
+
 -- Handle input packets
 function Route:push()
     -- Iterate over input links
@@ -555,7 +572,15 @@ function Route:push()
             local p_count = l_nreadable(in_link)
             for _ = 1, p_count do
                 local p = l_receive(in_link)
+                local n = tonumber(C.get_time_ns())
                 self:route(ctrl_link, link_config, p)
+                local l = tonumber(C.get_time_ns()) - n
+                avg_latency = l + exp_value * (avg_latency - l)
+                local nn = now()
+                if nn > next_report then
+                    print('Average Latency: ' .. avg_latency .. 'ns')
+                    next_report = nn + 5
+                end
             end
         end
     end
