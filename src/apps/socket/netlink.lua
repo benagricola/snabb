@@ -198,9 +198,6 @@ function Netlink:new_link(link_details)
 
     self.linux_map[index] = phy_index
 
-    for k, v in pairs(intf) do
-        print(k, tostring(v))
-    end
     link_details:address(ipv4:ntop(intf.ip) .. '/' .. intf.prefix)
     link_details:setmtu(intf.mtu)
     link_details:setmac(ethernet:ntop(intf.mac))

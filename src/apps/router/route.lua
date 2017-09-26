@@ -65,6 +65,10 @@ local ether_offset = e_hdr_len
 local ip_offset    = ether_offset + ip_hdr_len
 local icmp_offset  = ip_offset + icmp_hdr_len
 
+local ethernet_header_ptr_type = rtypes.ethernet_header_ptr_type
+local ipv4_header_ptr_type     = rtypes.ipv4_header_ptr_type
+local arp_header_ptr_type      = rtypes.arp_header_ptr_type
+
 local mac_unknown = ethernet:pton("00:00:00:00:00:00")
 local mac_broadcast = ethernet:pton("ff:ff:ff:ff:ff:ff")
 
@@ -134,19 +138,21 @@ function Route:new(conf)
         -- Only 1 FIB App since this is not int specific
         fib_app_name = conf.fib_app or 'fib',
         fib_app      = nil,
-
+        queue        = {},
+        queue_len    = 0,
+        fib_cache_stride = conf.fib_cache_stride or 32,
         fib_cache_v4 = ctable.new({
             key_type           = ffi_typeof('uint8_t[4]'), -- IPv4 Address
             value_type         = fib_v4_entry_t,
             max_occupancy_rate = 0.8,
-            initial_size       = 1024,
+            initial_size       = 100,
         }),
 
         mac_table     = ctable.new({
             key_type           = ffi_typeof('uint8_t[4]'), -- IPv4 Address
             value_type         = mac_v4_entry_t,
             max_occupancy_rate = 0.8,
-            initial_size       = 256,
+            initial_size       = 100,
         }),
 
         cache_age    = 15,
@@ -171,10 +177,11 @@ function Route:new(conf)
         }
     }
 
+    o.v4_streamer = o.fib_cache_v4:make_lookup_streamer(o.fib_cache_stride)
+
     -- Create ipairs-iterable list of interface names
     -- Also create ARP request template for each interface
     for int_name, vars in pairs(o.interfaces) do
-        o.int_names[#o.int_names+1] = int_name
         o.arp_packet[vars.phy_name] = { make_arp_request_tpl(vars.mac, vars.ip) }
     end
 
@@ -183,12 +190,14 @@ end
 
 
 function Route:send_icmp_reply(p, eth_hdr, ip_hdr, link_config, typ, code, unused_1, unused_2)
+    -- print('Sending ICMP type ' .. typ .. ' code ' .. code .. ' to ' .. ipv4:ntop(ip_hdr:src()) .. ' from ' .. ipv4:ntop(link_config.ip))
     local shm = self.shm
     local src_ip, dst_if = link_config.ip, link_config.phy_name
 
     -- Turn existing IP packet p into ICMP packet!
     -- Copies existing IP header + data forwards,
     -- and initialises icmp header in the gap.
+
     local data_len = math_min(ip_hdr:total_length(), ip_hdr_len + 8)
 
     -- Minimum packet size is 56 (56 - 20 - 4) = 32
@@ -228,8 +237,9 @@ function Route:send_icmp_reply(p, eth_hdr, ip_hdr, link_config, typ, code, unuse
     ip_hdr:dst(ip_hdr:src())
     ip_hdr:src(src_ip)
 
-    icmp_hdr:checksum(p.data + icmp_offset, data_len)
-    ip_hdr:total_length(data_len + icmp_hdr_len + ip_hdr_len)
+    icmp_hdr:checksum(p.data + icmp_offset, p.length - icmp_offset)
+
+    ip_hdr:total_length(data_len + icmp_hdr_len + ip_hdr_len + 4)
 
     -- Have to fully calculate the checksum
     ip_hdr:checksum()
@@ -318,20 +328,6 @@ end
 
 
 function Route:get_nexthop(wire_ip)
-    local cur_now = now()
-
-    local fib_cache_v4 = self.fib_cache_v4
-
-    local nh_ptr = fib_cache_v4:lookup_ptr(wire_ip)
-    local nh
-
-    -- If route is valid, return
-    if nh_ptr then
-        nh = nh_ptr.value
-        if nh.expires > cur_now then
-            return nh
-        end
-    end
 
     local fib_app = self.fib_app
     if not fib_app then
@@ -340,6 +336,7 @@ function Route:get_nexthop(wire_ip)
         assert(self.fib_app, 'No valid FIB app available!')
     end
 
+    local fib_cache_v4 = self.fib_cache_v4
     local route = fib_app:resolve_nexthop(wire_ip)
 
     local shm = self.shm
@@ -378,12 +375,16 @@ function Route:get_nexthop(wire_ip)
         end
     end
 
-    local route_expires_in = cur_now + self.cache_age
+    local route_expires_in = now() + self.cache_age
 
     local int_idx = route.intf
 
+    local nh = fib_cache_v4:lookup_ptr(wire_ip)
+
     -- Update existing FIB entry
     if nh then
+        nh         = nh.value
+
         nh.next_ip = next_ip
         nh.src_mac = interface.mac
         nh.dst_mac = dst_mac
@@ -409,7 +410,7 @@ function Route:get_nexthop(wire_ip)
 end
 
 
-function Route:route(ctrl_link, link_config, p)
+function Route:parse(ctrl_link, link_config, p)
     local shm = self.shm
 
     if p.length < e_hdr_len then
@@ -419,10 +420,7 @@ function Route:route(ctrl_link, link_config, p)
        return
     end
 
-    timer_start()
-    local ether_hdr = ffi_cast(rtypes.ethernet_header_ptr_type, p.data, e_hdr_len)
-    timer_end('Ether header cast')
---    local ether_hdr = ethernet:new_from_mem(p.data, e_hdr_len)
+    local ether_hdr = ffi_cast(ethernet_header_ptr_type, p.data, e_hdr_len)
 
     if not ether_hdr then
         counter_add(shm.dropped_invalid)
@@ -434,7 +432,7 @@ function Route:route(ctrl_link, link_config, p)
 
     -- Forward ARP frames to control channel
     if ether_type == ether_type_arp then
-        local arp_hdr = arp:new_from_mem(p.data + e_hdr_len, a_hdr_len)
+        local arp_hdr = ffi_cast(arp_header_ptr_type, p.data + e_hdr_len, a_hdr_len)
         self:process_arp(link_config.phy_name, arp_hdr)
         l_transmit(ctrl_link, p)
         counter_add(shm.arp)
@@ -446,7 +444,7 @@ function Route:route(ctrl_link, link_config, p)
 
     -- Decode IPv4 as IPv4
     if ether_type == ether_type_ipv4 then
-        ip_hdr = ipv4:new_from_mem(p.data + e_hdr_len, p.length - e_hdr_len)
+        ip_hdr = ffi_cast(ipv4_header_ptr_type, p.data + e_hdr_len, p.length - e_hdr_len)
         counter_add(shm.ipv4)
 
     -- Decode IPv6 as IPv6
@@ -473,33 +471,43 @@ function Route:route(ctrl_link, link_config, p)
     if ip_hdr:ttl() <= 1 then
         counter_add(shm.dropped_zerottl)
         -- TTL Exceeded in Transit
-        return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 11, 0)
-    end
-
-    -- Get packet next hop, cached
-    local ip_dst = ip_hdr:dst()
-    local nh, err = self:get_nexthop(ip_dst)
-
-    -- If no next hop, drop packet
-    if not nh then
-        -- If no route, we have no way to know if this is
-        -- directly connected or not (we receive an explicit
-        -- route from netlink for directly connected interfaces).
-        -- Reply with icmp network unreachable
-        if err == ERR_NO_ROUTE or err == ERR_NO_MAC then
-            -- Network Unreachable
-            return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 0)
-        elseif err == ERR_NO_MAC_DIRECT then
-            -- Host Unreachable
-            return self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 1)
-        end
-
-        p_free(p)
+        print('Sending ICMP TTL Exceeded')
+        self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 11, 0)
         return
     end
 
+    return ether_hdr, ip_hdr
+end
+
+function Route:send_err(item, err)
+    local ether_hdr, ip_hdr, link_config, p =
+        item.ether_hdr, item.ip_hdr, item.link_config, item.p
+
+    local cur_now = now()
+
+    -- Get packet next hop, cached
+    if err == ERR_NO_ROUTE or err == ERR_NO_MAC then
+	-- Network Unreachable
+	self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 0)
+	return
+    elseif err == ERR_NO_MAC_DIRECT then
+	-- Host Unreachable
+	self:send_icmp_reply(p, ether_hdr, ip_hdr, link_config, 3, 1)
+        return
+    end
+
+    p_free(p)
+    return
+end
+
+
+function Route:route(item, nh)
+    local shm = self.shm
+    local ether_hdr, ip_hdr, link_config, p =
+        item.ether_hdr, item.ip_hdr, item.link_config, item.p
+
     -- Select correct interface or drop if not managed
-    local int = self.interfaces[nh.int_idx]
+    local int      = self.interfaces[nh.int_idx]
     local l_out    = self.output
     local out_link = l_out[int.phy_name]
 
@@ -510,8 +518,6 @@ function Route:route(ctrl_link, link_config, p)
     end
 
     -- If packet length minus ether header is bigger than the outbound MTU
-    -- TODO: Clean this up to avoid code repetition
-    -- TODO: Send outbound ICMP via inbound port without route lookup
     -- We need to know the output link to decide what the MTU is
     -- Once we know the MTU, we need to return the packet out of the received
     -- port.
@@ -534,19 +540,84 @@ function Route:route(ctrl_link, link_config, p)
     ether_hdr:src(nh.src_mac)
     ether_hdr:dst(nh.dst_mac)
 
-    -- Set new TTL.
-    ip_hdr:ttl(ip_hdr:ttl() - 1)
-
-    -- Incrementally update checksum
-    -- Subtracting 1 from the TTL involves *adding* 1 or 256 to the checksum - thanks ones complement
-    -- TODO: May need further rshift? Seems to work for the moment??
-    local h = ip_hdr:header()
-    local sum = ntohs(h.checksum) + 0x100
-    h.checksum = htons(sum + bit_rshift(sum, 16))
+    -- Set new TTL. This automatically changes the checksum incrementally to match
+    ip_hdr:ttl_decr()
 
     -- Transmit the packet
     l_transmit(out_link, p)
     counter_add(shm.forwarded)
+end
+
+
+function Route:enqueue(item)
+    local queue       = self.queue
+    local len         = self.queue_len
+    local stride      = self.fib_cache_stride
+    local v4_streamer = self.v4_streamer
+
+    local key = item.dst
+
+    -- Add key to streamer, and item to queue
+    v4_streamer.entries[len].key = key
+    queue[len] = item
+    len = len + 1
+
+    if len >= stride then
+        self:flush()
+    else
+        self.queue_len = len
+        self.queue     = queue
+    end
+end
+
+function Route:flush()
+    local queue       = self.queue
+    local len         = self.queue_len
+    local v4_streamer = self.v4_streamer
+
+    if len < 1 then
+        return
+    end
+
+    -- Stream in lookups
+    v4_streamer:stream()
+
+    for i = 0, len - 1 do
+        local item = queue[i]
+
+        -- Found next hop, cached
+        if v4_streamer:is_found(i) then
+            local ret = v4_streamer.entries[i]
+            local nh = ret.value
+
+            local cur_now     = now()
+
+            -- If next hop has not expired, route packet
+            if nh.expires > cur_now then
+		self:route(item, nh)
+
+            -- Otherwise look up destination again and route if found
+            else
+                print('Next hop ' .. ipv4:ntop(ret.key) .. ' has expired, looking up...')
+                local nh, err = self:get_nexthop(ret.key)
+                if nh then
+		    self:route(item, nh)
+                else
+                    self:send_err(item, err)
+                end
+            end
+
+        -- Next hop not cached, so look up
+        else
+	    local nh, err = self:get_nexthop(item.dst)
+	    if nh then
+		self:route(item, nh)
+	    else
+		self:send_err(item, err)
+	    end
+        end
+    end
+    self.queue_len = 0
 end
 
 local avg_latency = 0
@@ -560,28 +631,29 @@ function Route:push()
     local i_config = self.interfaces
     local l_in     = self.input
     local l_out    = self.output
+    local queue    = self.queue
 
     -- Iterate over interface names and resolve to link
-    for _, link_name in ipairs(i_names) do
-        local link_config = i_config[link_name]
-
-        local in_link   = l_in[link_name]
+    for link_name, link_config in ipairs(i_config) do
+        local in_link   = l_in[link_config.phy_name]
         local ctrl_link = l_out[link_config.tap_name]
 
         if in_link then
             local p_count = l_nreadable(in_link)
             for _ = 1, p_count do
                 local p = l_receive(in_link)
-                local n = tonumber(C.get_time_ns())
-                self:route(ctrl_link, link_config, p)
-                local l = tonumber(C.get_time_ns()) - n
-                avg_latency = l + exp_value * (avg_latency - l)
-                local nn = now()
-                if nn > next_report then
-                    print('Average Latency: ' .. avg_latency .. 'ns')
-                    next_report = nn + 5
+
+                -- Parse inbound packet. If packet does not require routing,
+                -- then headers returned will be blank.
+                local ether_hdr, ip_hdr = self:parse(ctrl_link, link_config, p)
+
+                -- Enqueue packets with an IP header for a streamed lookup.
+                if ip_hdr then
+                    -- Enqueue item onto stream lookup
+                    self:enqueue({ ether_hdr = ether_hdr, ip_hdr = ip_hdr, link_config = link_config, p = p, dst = ip_hdr:dst()})
                 end
             end
         end
     end
+    self:flush()
 end

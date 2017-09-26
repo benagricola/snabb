@@ -48,7 +48,9 @@ local int_idx = 1
 function run(args)
     local c = config.new()
 
-    local conf = yang.load_configuration('router.conf', { schema_name = 'snabb-router-v1'})
+    local cfg_file = args[1] or 'router.conf'
+    print('Using config file ' .. cfg_file)
+    local conf = yang.load_configuration(cfg_file, { schema_name = 'snabb-router-v1'})
 
     local addresses      = {}
     local interfaces     = {}
@@ -71,7 +73,7 @@ function run(args)
         local converted_ipv4 = convert_ipv4(ip)
 
 
-        local interface = { tap_name = tap_name, phy_name = phy_name, mux_name = mux_name, mac = mac, ip = converted_ipv4, prefix = prefix, phy_if = phy_if, mtu = mtu }
+        local interface = { tap_name = tap_name, phy_name = phy_name, mux_name = mux_name, mac = mac, ip = converted_ipv4, prefix = prefix, phy_if = phy_if, tap_if = tap_if, mtu = mtu }
 
         -- Store interface details by index
         interfaces[int_idx] = interface
@@ -119,9 +121,9 @@ function run(args)
 
     config.app(c,  'fib',  nlsock.Netlink, { interfaces = interfaces, tap_map = tap_map })
 
-    numa.unbind_numa_node()
-    numa.bind_to_cpu(1)
-    numa.prevent_preemption(1)
+--    numa.unbind_numa_node()
+--    numa.bind_to_cpu(28)
+--    numa.prevent_preemption(1)
 
 
     engine.busywait = true
