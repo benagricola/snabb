@@ -132,6 +132,8 @@ end
 --  # Forwards traffic to correct outbound interface, replacing necessary IP fields
 Route = { }
 
+-- TODO: Implement icmp-policy settings (e.g. disable outbound ICMP replies)
+-- TODO: Implement counters
 
 function Route:new(conf)
     local o = {
@@ -258,7 +260,7 @@ end
 
 
 function Route:save_mac(ip, mac)
-    local mac_entry = mac_v4_entry_t({ mac = mac, expires = now() + self.arp_request_interval })
+    local mac_entry = mac_v4_entry_t({ ip = ip, mac = mac, expires = now() + self.arp_request_interval })
     print('Saving mac ' .. ethernet:ntop(mac) .. ' with IP ' .. ipv4:ntop(ip))
     self.mac_table:add(ip, mac_entry, true)
 end
@@ -342,6 +344,8 @@ function Route:get_nexthop(wire_ip)
     local shm = self.shm
 
     if not route then
+        -- Remove entry from cache if not found
+        fib_cache_v4:remove(wire_ip, true)
         counter_add(shm.dropped_noroute)
         return nil, ERR_NO_ROUTE
     end
@@ -366,6 +370,9 @@ function Route:get_nexthop(wire_ip)
     if not dst_mac then
         counter_add(shm.dropped_nomac)
 
+        -- Remove entry from cache if not found
+        fib_cache_v4:remove(wire_ip, true)
+
         -- Different behaviour required for no mac for next-hop
         -- vs no mac for directly connected devices (host vs. network unreachable)
         if not route.direct then
@@ -384,7 +391,6 @@ function Route:get_nexthop(wire_ip)
     -- Update existing FIB entry
     if nh then
         nh         = nh.value
-
         nh.next_ip = next_ip
         nh.src_mac = interface.mac
         nh.dst_mac = dst_mac
@@ -571,6 +577,7 @@ function Route:enqueue(item)
 end
 
 function Route:flush()
+    local cur_now     = now()
     local queue       = self.queue
     local len         = self.queue_len
     local v4_streamer = self.v4_streamer
@@ -587,10 +594,9 @@ function Route:flush()
 
         -- Found next hop, cached
         if v4_streamer:is_found(i) then
+
             local ret = v4_streamer.entries[i]
             local nh = ret.value
-
-            local cur_now     = now()
 
             -- If next hop has not expired, route packet
             if nh.expires > cur_now then
@@ -609,6 +615,7 @@ function Route:flush()
 
         -- Next hop not cached, so look up
         else
+            print('Next hop not cached')
 	    local nh, err = self:get_nexthop(item.dst)
 	    if nh then
 		self:route(item, nh)
@@ -635,6 +642,7 @@ function Route:push()
 
     -- Iterate over interface names and resolve to link
     for link_name, link_config in ipairs(i_config) do
+
         local in_link   = l_in[link_config.phy_name]
         local ctrl_link = l_out[link_config.tap_name]
 

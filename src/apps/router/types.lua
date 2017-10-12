@@ -306,4 +306,3 @@ local ipv4_header_type = ffi_metatype(ffi_typeof([[
 
 ipv4_header_ptr_type = ffi_typeof("$*", ipv4_header_type)
 ipv4_header_size     = ffi_sizeof(ipv4_header_type)
-print(ipv4_header_size)

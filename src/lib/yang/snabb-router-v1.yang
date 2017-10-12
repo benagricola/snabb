@@ -8,7 +8,7 @@ module snabb-router-v1 {
   organization "Squiz UK Ltd";
   contact "Ben Agricola <bagricola@squiz.co.uk>";
   description
-   "Configuration for the Snabb Switch Router";
+   "Configuration for Snabb Router";
 
   revision 2017-08-12 {
     description
@@ -143,13 +143,6 @@ module snabb-router-v1 {
          the Router process on the system.";
     }
 
-    leaf socket {
-      type string;
-      mandatory true;
-      description
-       "zAPI Socket to listen on";
-    }
-
     list interface {
       key device;
 
@@ -162,7 +155,11 @@ module snabb-router-v1 {
               enum mgmt;
           }
           description
-           "Interface type. This can be 'routed' or 'mgmt'";
+           "Interface type. This can be 'routed' or 'mgmt'.
+            'routed' interfaces are taken control of by snabb entirely, and are
+            able to pass traffic between them. 'mgmt' interfaces are left for
+            the underlying OS to control, but Snabb may use netlink commands
+            to configure IP addresses, MTU and similar settings.";
           default routed;
       }
 
@@ -175,25 +172,25 @@ module snabb-router-v1 {
 
       leaf tap {
         type string;
-        mandatory true;
+        mandatory false;
         description
-         "Router Tap on Engine. Must exist and be tuntap";
+         "Router Tap on Engine. Will be created if necessary";
       }
 
       leaf mac {
         type yang:mac-address;
         mandatory true;
         description
-         "Mac address assigned to tap (and others)";
+         "Mac address assigned to tap";
       }
 
       container address {
+        description
+         "A list of prefixes assigned to the network interface.  Used
+          when generating error messages.";
         leaf ip {
 	    type inet:ipv4-address;
 	    mandatory true;
-	    description
-	     "A list of prefixes assigned to the network interface.  Used
-	      when generating error messages.";
         }
         leaf prefix {
             type uint8;

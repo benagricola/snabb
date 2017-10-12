@@ -43,10 +43,10 @@ function Netlink:new(conf)
         fib_v4 = fib_v4,
         fib_v6 = fib_v6,
 
-        nexthops_v4_idx  = {},
-        nexthops_v4_addr = {},
-        nexthops_v6_idx  = {},
-        nexthops_v6_addr = {},
+        nexthops_v4_idx   = {},
+        nexthops_v4_by_if = {},
+        nexthops_v6_idx   = {},
+        nexthops_v6_by_if = {},
 
         state = 'state_init',
 
@@ -56,8 +56,8 @@ function Netlink:new(conf)
         linux_map  = {},
 
         rt_pending    = 0,
-        rt_build_last = 0,
-        rt_build_int  = 1, -- Rebuild routing tables every 5 seconds at minimum
+        rt_build_next = 0,
+        rt_build_int  = 5, -- Rebuild routing tables every 5 seconds at minimum
 
         -- Load full routing table by default
         reload = ((conf.reload == false) and false) or true,
@@ -117,7 +117,9 @@ function Netlink:resolve_nexthop(wire_ip)
 end
 
 function Netlink:add_route(nh_details)
-    local nh_idx_tab = self.nexthops_v4_idx
+    local nh_idx_tab   = self.nexthops_v4_idx
+    local nh_by_if_tab = self.nexthops_v4_by_if
+
     local prefix  = tostring(nh_details.dest) .. '/' .. nh_details.dst_len
     local gateway = tostring(nh_details.gw)
     local oif_idx = nh_details.index
@@ -137,10 +139,25 @@ function Netlink:add_route(nh_details)
     local gw_int = lpm_ipv4.parse(gateway)
     local direct = (gw_int == 0)
 
-    local nh_idx = #nh_idx_tab + 1
 
-	local gateway_wire = ipv4:pton(gateway)
-	nh_idx_tab[nh_idx] = { nh = nh_details, intf = out_index, addr = gateway, direct = direct, addr_wire = gateway_wire }
+    -- Attempt to get next-hop index from output interface and gateway integer
+    if not nh_by_if_tab[oif_idx] then
+        nh_by_if_tab[oif_idx] = {}
+    end
+
+    local nh_idx = nh_by_if_tab[oif_idx][gw_int]
+
+    -- If nh_idx not keyed by if, then insert
+    if not nh_idx then
+        nh_idx = #nh_idx_tab + 1
+        nh_by_if_tab[oif_idx][gw_int] = nh_idx
+
+        local gateway_wire = ipv4:pton(gateway)
+        nh_idx_tab[nh_idx] = { nh = nh_details, intf = out_index, addr = gateway, direct = direct, addr_wire = gateway_wire, refcount = 1 }
+    else
+        -- Bump refcount
+        nh_idx_tab[nh_idx].refcount = nh_idx_tab[nh_idx].refcount + 1
+    end
 
     print('Adding ' .. prefix .. ' with gw ' .. gateway .. ' and NH index ' .. nh_idx)
     self.fib_v4:add_string(prefix, nh_idx)
@@ -148,7 +165,8 @@ function Netlink:add_route(nh_details)
 end
 
 function Netlink:del_route(nh_details)
-    local nh_idx_tab = self.nexthops_v4_idx
+    local nh_idx_tab   = self.nexthops_v4_idx
+    local nh_by_if_tab = self.nexthops_v4_by_if
     local prefix  = tostring(nh_details.dest) .. '/' .. nh_details.dst_len
     local gateway = tostring(nh_details.gw)
     local oif_idx = nh_details.index
@@ -165,13 +183,40 @@ function Netlink:del_route(nh_details)
         return
     end
 
-	local gateway_wire = ipv4:pton(gateway)
+    local gw_int = lpm_ipv4.parse(gateway)
 
-    -- Todo: clean up unused next hops when routes are removed!
+    -- oif 36
+    -- op  delroute
+    -- rtmsg   cdata<struct rtmsg>: 0x400b7130
+    -- delroute    true
+    -- table   254
+    -- gateway 15.10.0.2
+    -- nl  25
+    -- dst 1.2.3.0
+
+    if not nh_by_if_tab[oif_idx] then
+        nh_by_if_tab[oif_idx] = {}
+    end
+
+    local nh_idx = nh_by_if_tab[oif_idx][gw_int]
+
     self.fib_v4:remove_string(prefix)
     self.rt_pending = self.rt_pending + 1
 
     print('Route deleted ' .. prefix .. ' via ' .. gateway .. ' (' .. intf.phy_if .. ')')
+
+    -- If next hop exists, decrement refcount.
+    -- Delete next-hop if unreferenced
+    if nh_idx then
+        local refcount = nh_idx_tab[nh_idx].refcount - 1
+        if refcount < 1 then
+            nh_by_if_tab[oif_idx][gw_int] = nil
+            nh_idx_tab[nh_idx] = nil
+            print('Next-hop index ' .. nh_idx .. ' no longer in use, deleting...')
+        else
+            nh_idx_tab[nh_idx].refcount = refcount
+        end
+    end
 end
 
 function Netlink:new_link(link_details)
@@ -201,14 +246,6 @@ function Netlink:new_link(link_details)
     link_details:address(ipv4:ntop(intf.ip) .. '/' .. intf.prefix)
     link_details:setmtu(intf.mtu)
     link_details:setmac(ethernet:ntop(intf.mac))
-
-    -- local ifs = self.interfaces
-    -- -- If we have a configuration for this interface, then configure it!
-    -- if ifs[msg.name] then
-    --     local if_conf = ifs[msg.name]
-    --     print('TODO: Configuring interface ' .. msg.name .. ' with ' .. tostring(if_conf.ip) .. '/' .. if_conf.prefix)
-    --     --msg:address('1.2.3.4/32')
-    -- end
 end
 
 function Netlink:maybe_build()
@@ -217,15 +254,13 @@ function Netlink:maybe_build()
         return
     end
 
-    -- If last build was over rt_build_int ago
     local cur_now = now()
-    if self.rt_build_last + self.rt_build_int < cur_now then
+    if self.rt_build_next < cur_now then
         print('Rebuilding routing tables with ' .. self.rt_pending .. ' pending routes...')
+        local build_start = tonumber(C.get_time_ns())
         self.fib_v4:build()
-        local build_time = now() - cur_now
-        print('Rebuild complete in ' .. (build_time * 1000 * 1000) .. ' ns')
-
-        self.rt_build_last = cur_now
+        print('Rebuild complete in ' .. (tonumber(C.get_time_ns()) - build_start) .. ' ns')
+        self.rt_build_next = cur_now + self.rt_build_int
         self.rt_pending = 0
     end
 end
@@ -262,6 +297,9 @@ function Netlink:pull ()
                 end
                 if nl == c.RTM.NEWLINK then
                     self:new_link(msg)
+                end
+                if nl == c.RTM.DELLINK then
+                    print('RTM.DELLINK NOT IMPLEMENTED')
                 end
             end
 
