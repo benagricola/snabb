@@ -115,7 +115,31 @@ EEC         0x10010 -               RW EEPROM/Flash Control Register
 EIMC        0x00888 -               RW Extended Interrupt Mask Clear
 ERRBC       0x04008 -               RC Error Byte Count
 FCCFG       0x03D00 -               RW Flow Control Configuration
+
 FCTRL       0x05080 -               RW Filter Control
+FDIRCTRL    0x0EE00 -               RW Flow Director Filters Control
+FDIRHKEY    0x0EE68 -               RW Flow Director Filters Lookup Table Hash Key
+FDIRSKEY    0x0EE6C -               RW Flow Director Filters Signature Hash Key
+FDIRDIP4M   0x0EE3C -               RW Flow Director Filters Destination IPv4 Mask
+FDIRSIP4M   0x0EE40 -               RW Flow Director Filters Source IPv4 Mask
+FDIRTCPM    0x0EE44 -               RW Flow Director Filters TCP Mask
+FDIRUDPM    0x0EE48 -               RW Flow Director Filters UDP Mask
+FDIRIP6M    0x0EE74 -               RW Flow Director Filters IPv6 Mask
+FDIRM       0x0EE70 -               RW Flow Director Filters Other Mask
+FDIRFREE    0x0EE38 -               RW Flow Director Filters Free
+FDIRLEN     0x0EE4C -               RC Flow Director Filters Length
+FDIRUSTAT   0x0EE50 -               RC Flow Director Filters Usage Statistics
+FDIRFSTAT   0x0EE54 -               RC Flow Director Filters Failed Usage Statistics
+FDIRMATCH   0x0EE58 -               RC Flow Director Filters Match Statistics
+FDIRMISS    0x0EE5C -               RC Flow Director Filters Miss Match Statistics
+FDIRSIPV6   0x0EE0C +4*0..2         RW Flow Director Filters Source IPv6
+FDIRIPSA    0x0EE18 -               RW Flow Director Filters IP Source Address
+FDIRIPDA    0x0EE1C -               RW Flow Director Filters IP Destination Address
+FDIRPORT    0x0EE20 -               RW Flow Director Filters Port
+FDIRVLAN    0x0EE24 -               RW Flow Director Filters VLAN and FLEX bytes
+FDIRHASH    0x0EE28 -               RW Flow Director Filters Hash Signature
+FDIRCMD     0x0EE2C -               RW Flow Director Filters Command Register
+
 HLREG0      0x04240 -               RW MAC Core Control 0
 ILLERRC     0x04004 -               RC Illegal Byte Error Count
 LINKS       0x042A4 -               RO Link Status Register
@@ -254,6 +278,8 @@ Intel = {
       ndescriptors = {default=2048},
       txq = {},
       rxq = {},
+      fdir = {default = false},
+      fdir_filters = {default = {}},
       mtu = {default=9014},
       linkup_wait = {default=120},
       linkup_wait_recheck = {default=0.1},
@@ -289,6 +315,8 @@ function Intel:new (conf)
       ndesc = conf.ndescriptors or self.config.ndescriptors.default,
       txq = conf.txq,
       rxq = conf.rxq,
+      fdir = conf.fdir,
+      fdir_filters = conf.fdir_filters,
       mtu = conf.mtu or self.config.mtu.default,
       linkup_wait = conf.linkup_wait or self.config.linkup_wait.default,
       linkup_wait_recheck =
@@ -342,7 +370,10 @@ function Intel:new (conf)
          txbcast   = {counter},
          txdrop    = {counter},
          txerrors  = {counter},
-         rxdmapackets = {counter}
+         rxdmapackets = {counter},
+         rxfdmatch = {counter},
+         rxfdmiss = {counter},
+
       }
       self:init_queue_stats(frame)
       self.stats = shm.create_frame("pci/"..self.pciaddress, frame)
@@ -598,6 +629,98 @@ function Intel:rss_tab_build ()
    end
    self:rss_tab(tab)
 end
+function Intel:fdir_enable ()
+   -- Don't enable fdir if not requested; fdir requires using some of the RX buffer.
+   -- Better to not do that if we don't have to.
+   if not self.fdir then
+       return
+   end
+
+   -- Set FDIRHKEY and SKEY
+   self.r.FDIRHKEY:bits(0, 4, 0x05AD0001)
+   self.r.FDIRSKEY:bits(0, 4, 0x174D3614)
+
+   -- 7.1.2.7.10
+   -- Set FDIRCTRL.PBALLOC to non-zero value according to the required buffer allocation
+   -- Smallest allocation is 64KB when PBALLOC is 01b. This gives 2k-2 perfect match filters
+   -- This also reduces the RXPBSIZE to 448KB from 512KB.
+   self.r.FDIRCTRL:set(bits { PBAlloc0 = 0, PerfectMatch = 4 })
+
+   self.r.FDIRCTRL:bits(24, 4, 0xA)
+
+   -- Poll the FDIRCTRL:INIT-Done flag until it is set to one by hardware
+   self.r.FDIRCTRL:wait(bits { InitDone = 3 })
+
+   -- Ignore all source address
+   self.r.FDIRSIP4M:set(0xFFFFFFFF)
+
+   -- Include all dst address
+   self.r.FDIRDIP4M:clr(0xFFFFFFFF)
+
+   -- Mask TCP and UDP ports to ignore. Port matching not supported
+   self.r.FDIRTCPM:set(0xFFFFFFFF)
+   self.r.FDIRUDPM:set(0xFFFFFFFF)
+
+   self.r.FDIRIP6M:set(0xFFFFFFFF)
+
+   -- Clear all Other Mask settings
+   self.r.FDIRM:set(0xFFFFFFFF)
+
+   self.r.FDIRSIP4M:print()
+   self.r.FDIRDIP4M:print()
+   self.r.FDIRTCPM:print()
+   self.r.FDIRUDPM:print()
+   self.r.FDIRIP6M:print()
+   self.r.FDIRM:print()
+end
+-- Adds a perfect match flow filter
+function Intel:fdir_add_filter(filter)
+   -- Check that we have free filters
+   local filters_free = self.r.FDIRFREE()
+
+   if filters_free - 2 < 1 then
+       print('No free flow director filters')
+       return nil
+   end
+
+   -- 7.1.2.7.6 Add Filter Flow
+   -- The software programs the filters parameters in the registers described in
+   -- Section 7.1.2.7.12 and Section 7.1.2.7.13 while keeping the FDIRCMD.Filter-Update bit inactive
+
+   -- Clear all cmd settings
+   self.r.FDIRCMD:clr(0xFFFFFFFF)
+
+   -- Set filter valid, update, last and queue enabled
+   self.r.FDIRCMD:set(bits { FilterValid = 2, FilterUpdate = 3, Last = 11, Queue_En = 15 })
+
+   -- Set queue value itself
+   self.r.FDIRCMD:bits(16, 7, filter.queue)
+
+   self.r.FDIRHASH:set(bits { Hash = 1, Valid = 15, SwIndex = 16 })
+
+   self.r.FDIRIPSA:clr(0xFFFFFFFF)
+   self.r.FDIRPORT:clr(0xFFFFFFFF)
+   self.r.FDIRVLAN:clr(0xFFFFFFFF)
+
+   -- Check if DST IP matches 15.10.0.1
+   self.r.FDIRIPDA:set(0x01000A0F)
+
+
+   self.r.FDIRCMD:print()
+   self.r.FDIRVLAN:print()
+   self.r.FDIRPORT:print()
+   self.r.FDIRIPSA:print()
+   self.r.FDIRIPDA:print()
+
+   -- Set the filter
+   self.r.FDIRCMD:bits(0, 1, 1)
+
+   -- Wait for the filter to be set and confirm the free count has dropped by 1
+   self.r.FDIRCMD:wait(bits { Cmd0 = 0, Cmd1 = 1}, 0)
+
+   self.r.FDIRFREE:wait(filters_free - 1)
+   print('Filter installed successfully')
+end
 function Intel:stop ()
    if self.rxq then
       -- 4.5.9
@@ -667,6 +790,8 @@ function Intel:sync_stats ()
    set(stats.txdrop, self:txdrop())
    set(stats.txerrors, self:txerrors())
    set(stats.rxdmapackets, self:rxdmapackets())
+   set(stats.rxfdmatch, self:rxfdmatch())
+   set(stats.rxfdmiss, self:rxfdmiss())
    for name, register in pairs(self.queue_stats) do
       set(stats[name], register())
    end
@@ -794,6 +919,14 @@ function Intel1g:rxdmapackets ()
    return self.r.RPTHC()
 end
 
+function Intel1g:rxfdmatch ()
+   return 0
+end
+
+function Intel1g:rxfdmiss ()
+   return 0
+end
+
 function Intel1g:init_queue_stats (frame)
    local perqregs = {
       rxdrops = "RQDPC",
@@ -848,6 +981,14 @@ function Intel82599:txdrop    () return 0               end
 function Intel82599:txerrors  () return 0               end
 function Intel82599:rxdmapackets ()
    return self.r.RXDGPC()
+end
+
+function Intel82599:rxfdmatch ()
+   return self.r.FDIRMATCH()
+end
+
+function Intel82599:rxfdmiss ()
+   return self.r.FDIRMISS()
 end
 
 function Intel82599:init_queue_stats (frame)
@@ -932,7 +1073,13 @@ function Intel82599:init ()
    self.r.VLNCTRL(0x8100)                    -- explicity set default
    self.r.RXCSUM(0)                          -- turn off all checksum offload
 
-   self.r.RXPBSIZE[0]:bits(10,19, 0x200)
+   -- If fdir is enabled, RXPBSIZE is reduced by 64KB
+   local rx_pbsize = 0x200
+   if self.fdir then
+       rx_pbsize = 0x1C0
+   end
+
+   self.r.RXPBSIZE[0]:bits(10,19, rx_pbsize)
    self.r.TXPBSIZE[0]:bits(10,19, 0xA0)
    self.r.TXPBTHRESH[0](0xA0)
    for i=1,7 do
@@ -966,6 +1113,12 @@ function Intel82599:init ()
    self.r.CTRL_EXT:set(bits {NS_DIS = 1})
 
    self:rss_enable()
+   self:fdir_enable()
+   if self.fdir then
+       for i=1, #self.fdir_filters do
+           self:fdir_add_filter(self.fdir_filters[i])
+       end
+   end
    self:unlock_sw_sem()
 end
 

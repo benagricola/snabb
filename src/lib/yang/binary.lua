@@ -284,6 +284,7 @@ local function ad_hoc_grammar_from_data(data)
    if type(data) == 'table' then
       local members = {}
       for k,v in pairs(data) do
+         k = tostring(k)
          assert(type(k) == 'string')
          members[k] = ad_hoc_grammar_from_data(v)
       end

@@ -134,6 +134,7 @@ Route = { }
 
 -- TODO: Implement icmp-policy settings (e.g. disable outbound ICMP replies)
 -- TODO: Implement counters
+-- TODO: Implement dst-ip -> next-hop cache invalidation on route updated
 
 function Route:new(conf)
     local o = {
@@ -440,6 +441,10 @@ function Route:parse(ctrl_link, link_config, p)
     if ether_type == ether_type_arp then
         local arp_hdr = ffi_cast(arp_header_ptr_type, p.data + e_hdr_len, a_hdr_len)
         self:process_arp(link_config.phy_name, arp_hdr)
+        if not ctrl_link then
+            print('ARP received on non-master process, unable to forward...')
+            return
+        end
         l_transmit(ctrl_link, p)
         counter_add(shm.arp)
         counter_add(shm.control)
@@ -469,6 +474,10 @@ function Route:parse(ctrl_link, link_config, p)
     -- Forward control traffic directly.
     if ip_hdr:dst_eq(link_config.ip) then
         counter_add(shm.control)
+        if not ctrl_link then
+            print('Ctrl pkt received on non-master process, unable to forward...')
+            return
+        end
         l_transmit(ctrl_link, p)
         return
     end
