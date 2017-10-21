@@ -9,6 +9,7 @@ local engine     = require("core.app")
 local numa       = require("lib.numa")
 local yang       = require('lib.yang.yang')
 
+local shm        = require("core.shm")
 local table      = require('table')
 local table_concat = table.concat
 local bit_lshift = require('bit').lshift
@@ -66,7 +67,8 @@ function run_worker(worker_id, cfg_file)
 	local phy_name = 'phy_' .. int_idx
 	local tap_name = 'tap_' .. int_idx
 	local arp_name = 'arp_' .. int_idx
-	local mux_name = 'mux_' .. int_idx
+	local out_mux_name = 'outmux_' .. int_idx
+	local in_mux_name = 'inmux_' .. int_idx
 
 	assert(tap_if, 'No tap for '..phy_if)
 	assert(mac, 'No mac for '..phy_if)
@@ -74,7 +76,7 @@ function run_worker(worker_id, cfg_file)
 	local converted_ipv4 = convert_ipv4(ip)
 
 
-	local interface = { tap_name = tap_name, phy_name = phy_name, mux_name = mux_name, mac = mac, ip = converted_ipv4, prefix = prefix, phy_if = phy_if, tap_if = tap_if, mtu = mtu }
+	local interface = { tap_name = tap_name, phy_name = phy_name, mux_name = out_mux_name, mac = mac, ip = converted_ipv4, prefix = prefix, phy_if = phy_if, tap_if = tap_if, mtu = mtu }
 
 	-- Store interface details by index
 	interfaces[int_idx] = interface
@@ -85,7 +87,7 @@ function run_worker(worker_id, cfg_file)
 	-- Configure each routable port
 	log_info('Configuring ' .. params.type .. ' interface ' .. phy_if .. ' with {r,t}xq = ' .. tostring(worker_id))
 
-	config.app(graph, phy_name, intel.Intel, { pciaddr = phy_if, txq = worker_id, rxq = worker_id, fdir = true, fdir_filters = {{ src_addr = nil, dst_addr = ip, queue = 0 }}, run_stats=true })
+	config.app(graph, phy_name, intel.Intel, { pciaddr = phy_if, txq = worker_id, rxq = worker_id, run_stats=true })
 
 	-- Link dataplane interface to router
 	config.link(graph, phy_name .. '.output -> router.' .. phy_name)
@@ -98,20 +100,26 @@ function run_worker(worker_id, cfg_file)
 	    -- Create tap interface
 	    config.app(graph, tap_name, tap.Tap, { name = tap_if, mtu_set=true })
 
-            -- Create mux, as we have multiple output ports (tap + router) back to one physical if
-	    config.app(graph, mux_name, basic.Join, {})
+            -- Create output mux, as we have multiple output ports (tap + router) back to one physical if
+	    config.app(graph, out_mux_name, basic.Join, {})
+
+            -- Create input mux, as we have router output to tap, but we also might have cross-process input
+	    config.app(graph, in_mux_name, basic.Join, {})
 
 	    -- Link router output ctrl plane ifs to tap device
-	    config.link(graph, 'router.' .. tap_name .. ' -> ' .. tap_name .. '.input')
+	    config.link(graph, 'router.' .. tap_name .. ' -> ' .. in_mux_name .. '.router_in')
 
 	    -- Link tap output back to dataplane interface
-	    config.link(graph, tap_name .. '.output -> ' .. mux_name .. '.tap_in')
+	    config.link(graph, tap_name .. '.output -> ' .. out_mux_name .. '.tap_in')
 
-	    -- Link mux (Join) to dataplane int
-	    config.link(graph, mux_name .. '.output -> ' .. phy_name .. '.input')
+	    -- Link in mux (Join) to tap int
+	    config.link(graph, in_mux_name .. '.output -> ' .. tap_name .. '.input')
+
+	    -- Link out mux (Join) to dataplane int
+	    config.link(graph, out_mux_name .. '.output -> ' .. phy_name .. '.input')
 
 	    -- Link routed traffic back to data plane
-	    config.link(graph, 'router.' .. phy_name .. ' -> ' .. mux_name .. '.router_in')
+	    config.link(graph, 'router.' .. phy_name .. ' -> ' .. out_mux_name .. '.router_in')
 
 
         -- If we're not interface master, we have no tap, which means we need no mux.

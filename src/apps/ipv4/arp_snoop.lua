@@ -27,7 +27,7 @@ local htons, ntohs = lib.htons, lib.ntohs
 local math_min = math.min
 local ffi_cast, ffi_new, ffi_copy = ffi.cast, ffi.new, ffi.copy
 local packet_free, packet_clone = packet.free, packet.clone
-local l_transmit, l_receive, l_nreadable, l_nwritable = link.transmit, link.receive, link.nreadable, link.nwritable
+local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwriteable
 
 local ether_header_t = ffi.typeof [[
 /* All values in network byte order.  */
@@ -202,7 +202,7 @@ end
 
 function ARPSnoop:snoop_south(input, output)
     local mac_table = self.mac_table
-    local p_count = math_min(l_nreadable(input), l_nwritable(output))
+    local p_count = math_min(l_nreadable(input), l_nwriteable(output))
     for _ = 1, p_count do
         local p = l_receive(input)
         if is_arp(p) then

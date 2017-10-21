@@ -4,7 +4,7 @@ local ffi    = require("ffi")
 local bit    = require("bit")
 
 local l_receive, l_transmit = link.receive, link.transmit
-local l_nreadable, l_nwritable = link.nreadable, link.nwritable
+local l_nreadable, l_nwriteable = link.nreadable, link.nwriteable
 local p_free = packet.free
 
 local uint16_ptr_t = ffi.typeof("uint16_t*")
@@ -54,7 +54,7 @@ SouthAndNorth.__index = SouthAndNorth
 
 local function _pass_packets (self, ilink, olink, cb)
    if olink then
-      local n = math.min(l_nreadable(ilink), l_nwritable(olink))
+      local n = math.min(l_nreadable(ilink), l_nwriteable(olink))
       for _ = 1, n do
          local p = l_receive(ilink)
          local newp = cb(self, p)

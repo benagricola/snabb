@@ -21,7 +21,7 @@ local ffi_new    = ffi.new
 local ffi_sizeof = ffi.sizeof
 local ffi_copy   = ffi.copy
 
-local l_transmit, l_receive, l_nreadable, l_nwritable = link.transmit, link.receive, link.nreadable, link.nwritable
+local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwriteable
 
 --- # `DTCBridge` app: Dataplane To Controlplane Bridge
 --  # Full Duplex app separating control plane and ARP traffic from routable traffic
@@ -59,7 +59,7 @@ function DTCBridge:push()
     if not l_in or not l_out then return end
 
     -- We *can* drop packets here if the output links cannot accept enough
-    local p_count = math_min(l_nreadable(l_in), l_nwritable(l_out))
+    local p_count = math_min(l_nreadable(l_in), l_nwriteable(l_out))
 
     for _ = 1, p_count do
         local p = l_receive(l_in)

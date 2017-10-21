@@ -28,7 +28,7 @@ local math_min     = math.min
 local now          = app.now
 
 local p_free, p_clone = packet.free, packet.clone
-local l_transmit, l_receive, l_nreadable, l_nwritable = link.transmit, link.receive, link.nreadable, link.nwritable
+local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwriteable
 
 -- Constants
 local ether_type_arp     = 0x0806

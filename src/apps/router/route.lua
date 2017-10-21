@@ -36,7 +36,7 @@ local now          = app.now
 local uint16_ptr_t = ffi_typeof("uint16_t*")
 
 local p_free, p_clone, p_resize, p_append = packet.free, packet.clone, packet.resize, packet.append
-local l_transmit, l_receive, l_nreadable, l_nwritable = link.transmit, link.receive, link.nreadable, link.nwritable
+local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwriteable
 
 -- Constants
 local e_hdr_len    = ethernet:sizeof()
