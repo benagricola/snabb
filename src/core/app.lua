@@ -138,21 +138,6 @@ function configure (new_config)
 end
 
 -- XXX - Shared links mud, wax off
-function attach_input (app, port, path)
-   local l = link.open(path)
-   link_table[path] = l
-   local app = app_table[app]
-   app.input[port] = l
-   table.insert(app.input, l)
-end
-function attach_output (app, port, path)
-   local l = link.open(path)
-   link_table[path] = l
-   local app = app_table[app]
-   app.output[port] = l
-   table.insert(app.output, l)
-end
-
 -- Removes the claim on a name, freeing it for other programs.
 --
 -- This relinquish a claim on a name if one exists. if the name does not
@@ -249,6 +234,8 @@ function compute_config_actions (old, new)
       end
    end
 
+   -- TODO: Remove inter-process attachments
+
    -- Start new apps, restart reclassed apps, or reconfigure apps with
    -- changed configuration.
    local fresh_apps = {}
@@ -290,6 +277,18 @@ function compute_config_actions (old, new)
       end
    end
 
+   for _, attachment in ipairs(new.attachments) do
+      local app, port, path, ltype = attachment
+
+      if ltype == 'input' then
+         table.insert(actions, {'attach_input', {app, port, path}})
+      elseif ltype == 'output' then
+         table.insert(actions, {'attach_output', {app, port, path}})
+      end
+
+
+   end
+
    return actions
 end
 
@@ -310,6 +309,23 @@ function apply_config_actions (actions)
          end
       end
    end
+   function ops.attach_input (app, port, path)
+      print('Attach input link ' .. app .. '/' .. port .. ': ' .. path)
+      local l = link.open(path)
+      link_table[path] = l
+      local app = app_table[app]
+      app.input[port] = l
+      table.insert(app.input, l)
+   end
+   function ops.attach_output (app, port, path)
+      print('Attach output link ' .. app .. '/' .. port .. ': ' .. path)
+      local l = link.open(path)
+      link_table[path] = l
+      local app = app_table[app]
+      app.output[port] = l
+      table.insert(app.output, l)
+   end
+
    function ops.unlink_output (appname, linkname)
       local app = app_table[appname]
       local link = app.output[linkname]
@@ -681,12 +697,12 @@ function selftest ()
 
    -- Check one can't unclaim a name if no name is claimed.
    assert(not pcall(unclaim_name))
-   
+
    -- Test claiming and enumerating app names
    local basename = "testapp"
    local progname = basename.."1"
    claim_name(progname)
-   
+
    -- Check if it can be enumerated.
    local progs = assert(enumerate_named_programs())
    assert(progs[progname])
@@ -703,5 +719,5 @@ function selftest ()
    local progs = enumerate_named_programs()
    assert(progs[newname] == nil)
    assert(not program_name)
-   
+
 end

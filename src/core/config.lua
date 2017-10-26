@@ -11,7 +11,8 @@ local lib = require("core.lib")
 function new ()
    return {
       apps = {},         -- list of {name, class, args}
-      links = {}         -- table with keys like "a.out -> b.in"
+      links = {},        -- table with keys like "a.out -> b.in"
+      attachments = {},  -- list of {input_app, group_name}
    }
 end
 
@@ -40,6 +41,13 @@ end
 -- Example: config.link(c, "nic.tx -> vm.rx")
 function link (config, spec)
    config.links[canonical_link(spec)] = true
+end
+
+function attach (config, app, port, path, link_type)
+   if link_type ~= 'input' and link_type ~= 'output' then
+       error('attachment type error, must be input or output')
+   end
+   table.insert(config.attachments, { app, port, path, link_type })
 end
 
 -- Given "a.out -> b.in" return "a", "out", "b", "in".

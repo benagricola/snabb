@@ -44,7 +44,7 @@ local function convert_ipv4(addr)
    if addr ~= nil then return ipv4:pton(ipv4_ntop(addr)) end
 end
 
-function run_worker(worker_id, cfg_file)
+function run_worker(worker_id, processes, cfg_file)
     print('Running worker as follower ' .. tostring(worker_id))
     print('Using config file ' .. cfg_file)
 
@@ -66,6 +66,8 @@ function run_worker(worker_id, cfg_file)
 	local tap_if   = params.tap
 	local phy_name = 'phy_' .. int_idx
 	local tap_name = 'tap_' .. int_idx
+        local ipl_name = 'ipl_' .. tap_name
+        local group_name = "group/"..ipl_name
 	local arp_name = 'arp_' .. int_idx
 	local out_mux_name = 'outmux_' .. int_idx
 	local in_mux_name = 'inmux_' .. int_idx
@@ -74,6 +76,10 @@ function run_worker(worker_id, cfg_file)
 	assert(mac, 'No mac for '..phy_if)
 
 	local converted_ipv4 = convert_ipv4(ip)
+
+	-- Create an inter-process link
+	local p_link = link.new(ipl_name)
+	shm.alias(group_name, "links/" .. ipl_name)
 
 
 	local interface = { tap_name = tap_name, phy_name = phy_name, mux_name = out_mux_name, mac = mac, ip = converted_ipv4, prefix = prefix, phy_if = phy_if, tap_if = tap_if, mtu = mtu }
@@ -106,8 +112,11 @@ function run_worker(worker_id, cfg_file)
             -- Create input mux, as we have router output to tap, but we also might have cross-process input
 	    config.app(graph, in_mux_name, basic.Join, {})
 
-	    -- Link router output ctrl plane ifs to tap device
+	    -- Link router output ctrl plane ifs to tap device mux
 	    config.link(graph, 'router.' .. tap_name .. ' -> ' .. in_mux_name .. '.router_in')
+
+	    -- Attach input link to input mux name
+            config.attach(graph, 'in_mux_name', ipl_name, group_name, 'input')
 
 	    -- Link tap output back to dataplane interface
 	    config.link(graph, tap_name .. '.output -> ' .. out_mux_name .. '.tap_in')
@@ -126,6 +135,9 @@ function run_worker(worker_id, cfg_file)
         else
 	    -- Link routed traffic back to data plane
 	    config.link(graph, 'router.' .. phy_name .. ' -> ' .. phy_name .. '.input')
+
+	    -- Attach router tap output link to ipc
+            config.attach(graph, 'router', tap_name, group_name, 'output')
         end
 
 	int_idx = int_idx + 1
@@ -155,17 +167,17 @@ function run(args)
     local processes = 4
 
 
-    local worker_code = "require('program.snabbrouter.snabbrouter').run_worker(%d, '%s')"
+    local worker_code = "require('program.snabbrouter.snabbrouter').run_worker(%d, %d, '%s')"
 
     local follower_pids = {}
 
     for i = 1, processes+1 do
         print('Spawning process ' .. tostring(i))
-        follower_pids[#follower_pids+1] = worker.start("router_" .. tostring(i), worker_code:format(i, cfg_file))
+        follower_pids[#follower_pids+1] = worker.start("router_" .. tostring(i), worker_code:format(i, processes, cfg_file))
     end
 
 
-    run_worker(0, cfg_file)
+    run_worker(0, processes, cfg_file)
 end
 
 function selftest()
