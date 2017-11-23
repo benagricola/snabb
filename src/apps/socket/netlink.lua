@@ -20,6 +20,7 @@ local packet = require("core.packet")
 local counter = require("core.counter")
 local lpm = require('lib.lpm.lpm4_trie')
 local lpm_248 = require('lib.lpm.lpm4_248')
+local lpm_dxr = require('lib.lpm.lpm4_dxr')
 local ffi = require("ffi")
 local C = ffi.C
 
@@ -34,21 +35,17 @@ function Netlink:new(conf)
     local sock = nlutil.open_netlink()
     assert(sock, 'Unable to open and bind netlink socket')
 
-    local fib_v4 = lpm.LPM4_trie:new()
-    local fib_v6 = lpm.LPM4_trie:new()
+    local fib_v4 = lpm.LPM4_dxr:new()
 
     local o = {
         sock = sock,
 
         fib_v4 = fib_v4,
-        fib_v6 = fib_v6,
 
         nexthops_v4_idx   = {},
         nexthops_v4_by_if = {},
-        nexthops_v6_idx   = {},
-        nexthops_v6_by_if = {},
 
-        state = 'state_init',
+        state = 'init',
 
         -- Interfaces we would like to configure internally
         interfaces = conf.interfaces or {},
@@ -68,12 +65,12 @@ end
 function Netlink:transition(state)
     if state and state ~= self.state then
         print('Transitioning from state ' .. self.state .. ' to ' .. state)
-        self.state = 'state_' .. state
+        self.state = state
     end
 end
 
 function Netlink:is_state(state)
-    return self.state == 'state_' .. state
+    return self.state == state
 end
 
 function Netlink:state_init()
@@ -185,15 +182,6 @@ function Netlink:del_route(nh_details)
 
     local gw_int = lpm_ipv4.parse(gateway)
 
-    -- oif 36
-    -- op  delroute
-    -- rtmsg   cdata<struct rtmsg>: 0x400b7130
-    -- delroute    true
-    -- table   254
-    -- gateway 15.10.0.2
-    -- nl  25
-    -- dst 1.2.3.0
-
     if not nh_by_if_tab[oif_idx] then
         nh_by_if_tab[oif_idx] = {}
     end
@@ -274,8 +262,10 @@ function Netlink:pull ()
     local fin_state = self.state
 
     -- Call state function
-    if type(self[self.state]) == 'function' then
-        fin_state = self[self.state](self)
+    local sf = 'state_' .. self.state
+
+    if type(self[sf]) == 'function' then
+        fin_state = self[sf](self)
     end
 
     self:maybe_build()
