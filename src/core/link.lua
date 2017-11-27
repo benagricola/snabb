@@ -27,103 +27,75 @@ local provided_counters = {
 }
 
 function new (name)
-   local r = shm.create("links/"..name.."/link", link_t)
-   counter.set(r.dtime, C.get_unix_time())
-   return r
-end
-
-function open (path)
-   local r = shm.open(path.."/link", link_t)
+   local r = ffi.new(link_t)
+   for _, c in ipairs(provided_counters) do
+      r.stats[c] = counter.create("links/"..name.."/"..c..".counter")
+   end
+   counter.set(r.stats.dtime, C.get_unix_time())
    return r
 end
 
 function free (r, name)
+   for _, c in ipairs(provided_counters) do
+      counter.delete("links/"..name.."/"..c..".counter")
+   end
    shm.unlink("links/"..name)
-end
-
-local function NEXT (i)
-   return band(i + 1, size - 1)
 end
 
 function receive (r)
 --   if debug then assert(not empty(r), "receive on empty link") end
-   local p = r.packets[r.nread]
-   r.nread = NEXT(r.nread)
+   local p = r.packets[r.read]
+   r.read = band(r.read + 1, size - 1)
 
-   counter.add(r.rxpackets)
-   counter.add(r.rxbytes, p.length)
+   counter.add(r.stats.rxpackets)
+   counter.add(r.stats.rxbytes, p.length)
    return p
 end
 
 function front (r)
-   return (not empty(r)) and r.packets[r.nread] or nil
-end
-
--- Return true if the ring is empty.
-function empty (r)
-   if r.nread == r.lwrite then
-      if r.nread == r.write then
-         return true
-      end
-      r.lwrite = r.write
-   end
-   return false
+   return (r.read ~= r.write) and r.packets[r.read] or nil
 end
 
 function transmit (r, p)
 --   assert(p)
    if full(r) then
-      counter.add(r.txdrop)
+      counter.add(r.stats.txdrop)
       packet.free(p)
    else
-      r.packets[r.nwrite] = p
-      r.nwrite = NEXT(r.nwrite)
-      counter.add(r.txpackets)
-      counter.add(r.txbytes, p.length)
+      r.packets[r.write] = p
+      r.write = band(r.write + 1, size - 1)
+      counter.add(r.stats.txpackets)
+      counter.add(r.stats.txbytes, p.length)
    end
+end
+
+-- Return true if the ring is empty.
+function empty (r)
+   return r.read == r.write
 end
 
 -- Return true if the ring is full.
 function full (r)
-   local after_nwrite = NEXT(r.nwrite)
-   if after_nwrite == r.lread then
-      if after_nwrite == r.read then
-         return true
-      end
-      r.lread = r.read
-   end
-   return false
+   return band(r.write + 1, size - 1) == r.read
 end
 
 -- Return the number of packets that are ready for read.
 function nreadable (r)
-   if r.nread > r.write then
-      return r.write + size - r.nread
+   if r.read > r.write then
+      return r.write + size - r.read
    else
-      return r.write - r.nread
+      return r.write - r.read
    end
 end
 
-function nwriteable (r)
-   if r.read > r.nwrite then
-      return max - (r.nwrite + size - r.read)
-   else
-      return max - (r.nwrite - r.read)
-   end
-end
-
-function produce (r)
-   r.write = r.nwrite
-end
-
-function consume (r)
-   r.read = r.nread
+function nwritable (r)
+   return max - nreadable(r)
 end
 
 function stats (r)
    local stats = {}
    for _, c in ipairs(provided_counters) do
-      stats[c] = tonumber(counter.read(r[c]))
+      stats[c] = tonumber(counter.read(r.stats[c]))
    end
    return stats
 end

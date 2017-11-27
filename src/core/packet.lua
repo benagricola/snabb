@@ -10,9 +10,7 @@ local C = ffi.C
 
 local lib      = require("core.lib")
 local memory   = require("core.memory")
-local shm      = require("core.shm")
 local counter  = require("core.counter")
-local spinlock = require("core.spinlock")
 
 require("core.packet_h")
 
@@ -47,24 +45,18 @@ end
 
 -- Freelist containing empty packets ready for use.
 
-local max_packets = 1e6
-
-ffi.cdef([[
+ffi.cdef[[
 struct freelist {
     uint64_t nfree;
     uint64_t max;
-    struct packet *list[]]..max_packets..[[];
+    struct packet *list[?];
 };
-]])
-
-local function freelist_full(freelist)
-   return freelist.nfree == freelist.max
-end
+]]
 
 local function freelist_add(freelist, element)
    -- Safety check
    if _G.developer_debug then
-      assert(not freelist_full(freelist), "freelist overflow")
+      assert(freelist.nfree < freelist.max, "freelist overflow")
    end
    freelist.list[freelist.nfree] = element
    freelist.nfree = freelist.nfree + 1
@@ -83,42 +75,15 @@ local function freelist_nfree(freelist)
    return freelist.nfree
 end
 
+local max_packets = 1e6
 local packet_allocation_step = 1000
 local packets_allocated = 0
-local packets_fl = ffi.new("struct freelist", 0, max_packets)
-
-local balance_fl
-if not shm.exists("group/balance.fl") then
-   balance_fl = shm.create("group/balance.fl", "struct freelist")
-   balance_fl.max = max_packets
-   balance_fl.nfree = 0
-else
-   balance_fl = shm.open("group/balance.fl", "struct freelist")
-end
-local balance_fl_lock = spinlock.new()
-
-function rebalance ()
-   if freelist_nfree(packets_fl) > packets_allocated then
-      spinlock.lock(balance_fl_lock)
-      while freelist_nfree(packets_fl) > packets_allocated
-      and not freelist_full(balance_fl) do
-         freelist_add(balance_fl, freelist_remove(packets_fl))
-      end
-      spinlock.unlock(balance_fl_lock)
-   end
-end
+local packets_fl = ffi.new("struct freelist", max_packets, 0, max_packets)
 
 -- Return an empty packet.
 function allocate ()
    if freelist_nfree(packets_fl) == 0 then
-      spinlock.lock(balance_fl_lock)
-      while freelist_nfree(balance_fl) > 0 do
-         free(freelist_remove(balance_fl))
-      end
-      spinlock.unlock(balance_fl_lock)
-      if freelist_nfree(packets_fl) == 0 then
-         preallocate_step()
-      end
+      preallocate_step()
    end
    return freelist_remove(packets_fl)
 end
