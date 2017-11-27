@@ -35,8 +35,8 @@ function IP4.eq (ipa, ipb)
 end
 function IP4.get_bit (ip, offset)
    assert(offset >= 0)
-   assert(offset < 32)
-   return tonumber(bit.band(bit.rshift(ip, 31-offset), 1))
+   assert(offset <= 32)
+   return tonumber(bit.band(bit.rshift(ip, 32-offset), 1))
 end
 IP4.masked = (function()
    local arr = ffi.new("int32_t[?]", 33)
