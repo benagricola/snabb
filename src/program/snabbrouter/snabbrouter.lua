@@ -18,8 +18,7 @@ local C           = ffi.C
 
 local basic       = require('apps.basic.basic_apps')
 local intel       = require('apps.intel_mp.intel_mp')
-local receiver    = require('apps.interlink.receiver')
-local transmitter = require('apps.interlink.transmitter')
+local interlink   = require('apps.interlink.mapper')
 
 local nlforwarder = require('apps.router.nlforwarder')
 
@@ -51,8 +50,6 @@ function run_worker(worker_id, processes, cfg_file)
 	local tap_name     = 'tap_' .. int_idx
         local out_mux_name = 'outmux_' .. int_idx
 	local in_mux_name  = 'inmux_' .. int_idx
-        local ipl_name     = 'ipl_' .. tap_name
-        local group_name   = 'group/' .. ipl_name
 
 	assert(tap_if, 'No tap for '..phy_if)
 	assert(mac, 'No mac for '..phy_if)
@@ -86,12 +83,12 @@ function run_worker(worker_id, processes, cfg_file)
 
             config.app(graph, tap_name, tap.Tap, { name = tap_if, mtu_set=true })
 
+
             config.app(graph, out_mux_name, basic.Join, {})
             config.app(graph, in_mux_name, basic.Join, {})
 
             -- Create tap receiver app for master and link its' output to input mux
-            config.app(graph, 'tap_receiver', receiver, { name=group_name })
-            config.link(graph, 'tap_receiver.output -> ' .. in_mux_name .. '.ipc_in')
+            config.link(graph, 'interlink.' .. tap_name .. ' -> ' .. in_mux_name .. '.ipc_in')
 
             -- Link router output ctrl plane to input mux input input
             config.link(graph, 'forwarder.' .. tap_name .. ' -> ' .. in_mux_name .. '.router_in')
@@ -118,10 +115,12 @@ function run_worker(worker_id, processes, cfg_file)
 	    -- Create ipc transmitter for tap device
 	    -- As we're not master for this tap device, we push direct traffic across IPC
 	    -- to the master.
-            config.app(graph, 'tap_transmitter', transmitter, { name=group_name })
-            config.link(graph, 'forwarder.' .. tap_name .. ' -> tap_transmitter.input')
+            config.link(graph, 'forwarder.' .. tap_name .. ' -> interlink.' .. tap_name)
 
         end
+
+        -- Configure interlink app
+	config.app(graph, 'interlink', interlink, {})
 
         config.app(graph, phy_name, intel.Intel, phy_cfg)
 
@@ -138,7 +137,7 @@ function run_worker(worker_id, processes, cfg_file)
 
     -- Forwarder handles all inter-process communications.
     config.app(graph,  'forwarder',  nlforwarder.NLForwarder, {
-        master=true,
+        master=false,
         fib_mode='dxr',
         netlink_type='route',
         interfaces=interfaces,

@@ -59,7 +59,6 @@ function request_routes(sock, family, tp)
 
     local ok, err = nl.write(sock, nil, c.RTM.GETROUTE, rdump_flags, family, t.rtmsg, rtm)
 
-    print('Finished routes')
     return ok, err
 end
 
@@ -70,7 +69,6 @@ function request_interfaces(sock)
 
     local ok, err = nl.write(sock, nil, c.RTM.GETLINK, rdump_flags, nil, t.rtgenmsg, { rtgen_family = c.AF.PACKET })
 
-    print('Finished interfaces')
     return ok, err
 end
 

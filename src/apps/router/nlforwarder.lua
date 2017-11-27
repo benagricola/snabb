@@ -117,6 +117,7 @@ function NLForwarder:new(conf)
     if conf.master then
         o.push = NLForwarder.push_master
     else
+        o.pull = nil
         o.push = NLForwarder.push_slave
     end
 

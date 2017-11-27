@@ -32,6 +32,15 @@ function create (name)
    return r
 end
 
+function open (name, can_create)
+   if not shm.exists(name) and can_create then
+       return create(name)
+   end
+
+   local r = shm.open(name, "struct interlink")
+   return r
+end
+
 function init (r) -- initialization must be performed by consumer
    assert(r.packets[0] == ffi.new("void *")) -- only satisfied if uninitialized
    for i = 0, link.max do
