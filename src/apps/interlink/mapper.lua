@@ -70,8 +70,11 @@ function Mapper:push ()
 end
 
 function Mapper:stop ()
-   for link_name, interlink in pairs(self.links) do
-       shm.unmap(interlink)
+   for _, l in ipairs(self.in_links) do
+       shm.unmap(l.interlink)
+   end
+   for _, l in ipairs(self.out_links) do
+       shm.unmap(l.interlink)
    end
 end
 
