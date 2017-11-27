@@ -88,7 +88,7 @@ function nreadable (r)
    end
 end
 
-function nwritable (r)
+function nwriteable (r)
    return max - nreadable(r)
 end
 

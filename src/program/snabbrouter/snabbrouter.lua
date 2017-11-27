@@ -18,6 +18,9 @@ local C           = ffi.C
 
 local basic       = require('apps.basic.basic_apps')
 local intel       = require('apps.intel_mp.intel_mp')
+local receiver    = require('apps.interlink.receiver')
+local transmitter = require('apps.interlink.transmitter')
+
 local nlforwarder = require('apps.router.nlforwarder')
 
 local lib         = require("core.lib")
@@ -44,13 +47,12 @@ function run_worker(worker_id, processes, cfg_file)
 	local mac          = params.mac or nil
 	local mtu          = params.mtu or 1500
 	local tap_if       = params.tap
-        local ipl_name     = 'ipl_' .. tap_name
-        local group_name   = 'group/' .. ipl_name
 	local phy_name     = 'phy_' .. int_idx
 	local tap_name     = 'tap_' .. int_idx
         local out_mux_name = 'outmux_' .. int_idx
 	local in_mux_name  = 'inmux_' .. int_idx
-
+        local ipl_name     = 'ipl_' .. tap_name
+        local group_name   = 'group/' .. ipl_name
 
 	assert(tap_if, 'No tap for '..phy_if)
 	assert(mac, 'No mac for '..phy_if)
@@ -60,10 +62,6 @@ function run_worker(worker_id, processes, cfg_file)
         local is_master_proc = (master_proc == worker_id)
 
         local converted_ipv4 = convert_ipv4(ip)
-
-        -- Each process gets an inter-process link for each if
-	local p_link = link.new(ipl_name)
-	shm.alias(group_name, "links/" .. ipl_name)
 
         local interface = {
             tap_name    = tap_name,
@@ -89,12 +87,17 @@ function run_worker(worker_id, processes, cfg_file)
             config.app(graph, tap_name, tap.Tap, { name = tap_if, mtu_set=true })
 
             config.app(graph, out_mux_name, basic.Join, {})
+            config.app(graph, in_mux_name, basic.Join, {})
 
-            -- No input mux required as yet since forwarder will handle IPC
-            -- config.app(graph, in_mux_name,  basic.Join, {})
+            -- Create tap receiver app for master and link its' output to input mux
+            config.app(graph, 'tap_receiver', receiver, { name=group_name })
+            config.link(graph, 'tap_receiver.output -> ' .. in_mux_name .. '.ipc_in')
 
-            -- Link router output ctrl plane to tap input
-            config.link(graph, 'forwarder.' .. tap_name .. ' -> ' .. tap_name .. '.input')
+            -- Link router output ctrl plane to input mux input input
+            config.link(graph, 'forwarder.' .. tap_name .. ' -> ' .. in_mux_name .. '.router_in')
+
+	    -- Link input mux output to tap input
+            config.link(graph, in_mux_name .. '.output -> ' .. tap_name .. '.input')
 
             -- Link tap output back to output mux input
             config.link(graph, tap_name .. '.output -> ' .. out_mux_name .. '.tap_in')
@@ -105,16 +108,18 @@ function run_worker(worker_id, processes, cfg_file)
             -- Link output mux back to phy input
             config.link(graph, out_mux_name .. '.output -> ' .. phy_name .. '.input')
 
-            -- Attach input ipc link to input mux name
-            config.attach(graph, 'in_mux_name', ipl_name, group_name, 'input')
-
-
         else
             print('Configuring interface ' .. tostring(phy_if) .. ' slave on process ' .. tostring(worker_id))
             phy_cfg.run_stats = true
 
             -- Link routed traffic back to phy input
             config.link(graph, 'forwarder.' .. phy_name .. ' -> ' .. phy_name .. '.input')
+
+	    -- Create ipc transmitter for tap device
+	    -- As we're not master for this tap device, we push direct traffic across IPC
+	    -- to the master.
+            config.app(graph, 'tap_transmitter', transmitter, { name=group_name })
+            config.link(graph, 'forwarder.' .. tap_name .. ' -> tap_transmitter.input')
 
         end
 
