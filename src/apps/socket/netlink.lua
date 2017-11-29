@@ -35,7 +35,7 @@ local open_netlink = function(tp)
     local addr = t.sockaddr_nl()
 
     -- Listen for groups and interface changes
-    addr.groups = c.RTMGRP.IPV4_ROUTE
+    addr.groups = bit.bor(c.RTMGRP.IPV4_ROUTE, c.RTMGRP.LINK)
 
     local ok, err = S.bind(sock, addr)
     if not ok then
@@ -185,6 +185,15 @@ function Netlink:request_interfaces()
     local ok, err = request_interfaces(self.sock)
     if not ok then
         error('Unable to request interfaces from netlink: ', err)
+    end
+    sock:close()
+end
+
+function Netlink:request_routes()
+    local sock = open_netlink(self.tp)
+    local ok, err = request_routes(self.sock)
+    if not ok then
+        error('Unable to request routes from netlink: ', err)
     end
     sock:close()
 end

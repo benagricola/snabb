@@ -306,3 +306,24 @@ local ipv4_header_type = ffi_metatype(ffi_typeof([[
 
 ipv4_header_ptr_type = ffi_typeof("$*", ipv4_header_type)
 ipv4_header_size     = ffi_sizeof(ipv4_header_type)
+
+mac_v4_entry_t = ffi_typeof([[
+   struct {
+      uint8_t  ip[4];
+      uint32_t expires;
+      uint8_t  mac[6];
+   }
+]])
+
+fib_v4_entry_t = ffi_typeof([[
+   struct {
+      uint32_t expires;
+      uint32_t int_idx;
+      uint8_t  next_ip[4];
+      uint8_t  direct;
+      uint8_t  src_mac[6];
+      uint8_t  dst_mac[6];
+      uint32_t refcount;
+   }
+]])
+
