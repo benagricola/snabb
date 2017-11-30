@@ -34,7 +34,10 @@ local C           = ffi.C
 
 local pt          = S.types.pt
 
-local nf_index    = 2^16-1
+local nh_notfound_index = 2^15-1
+local nh_drop_index     = nh_notfound_index - 1
+local nh_max            = nh_drop_index - 1
+
 local now         = app.now
 
 local p_free, p_clone, p_resize, p_append = packet.free, packet.clone, packet.resize, packet.append
@@ -70,11 +73,11 @@ function NLForwarder:new(conf)
     local fib_mode = fib_modes[conf.fib_mode]
     assert(fib_mode, 'FIB Mode ' .. conf.fib_mode .. ' invalid.')
 
-    o.fib        = fib_mode:new({ keybits = 31 })
+    o.fib        = fib_mode:new({ keybits = 15 })
     -- Add 'not found' route as LPM expects a default entry
     -- Index is converted to uint16_t so we use the maximum value
     -- for 'not found'
-    o.fib:add_string('0.0.0.0/0', nf_index)
+    o.fib:add_string('0.0.0.0/0', nh_notfound_index)
 
     o.interfaces = conf.interfaces
     o.load_fib   = true
@@ -148,24 +151,127 @@ function NLForwarder:maybe_load_fib(l_out)
     end
 end
 
-function NLForwarder:lookup_nexthop(dst)
-    local nh_idx = self.fib:search_bytes(dst)
+function NLForwarder:lookup_nexthop_index(dst)
+    local nh_index = self.fib:search_bytes(dst)
 
-    if nh_idx == nf_index then
+    if nh_index == nh_notfound_index then
         return nil, ERR_NO_ROUTE
     end
 
-    local nh_idx = ffi_new('uint32_t', nh_idx)
+    return nh_index, nil
+end
 
-    local nhp = self.next_hop_idx:lookup_ptr(nh_idx)
-
-    assert(nhp, 'Unable to find next-hop entry for existing route!')
-    return self.next_hop_idx:lookup_ptr(nh_idx).value, nil
+function NLForwarder:lookup_nexthop_by_index(nh_idx)
+    -- If we're not a FIB master then only return results
+    -- from cache. We learn cache items over interlink.
+    local nh = self.next_hop_cache:lookup_ptr(ffi_cast('uint16_t', nh_idx))
+    assert(nh, 'Attempted to look up a next hop by index that does not exist!')
+    return nh.value
 end
 
 
 -- Handle incoming interlink (cross-process data) packets
 -- These may contain route updates or ARP packets.
+function NLForwarder:push_interlink(l_in, l_out)
+    local interfaces  = self.interfaces
+    local l_in, l_out = self.input, self.output
+    local l_master    = l_out['to_master']
+    local in_link     = l_in['from_children']
+
+    local shm = self.shm
+
+    if in_link then
+        local p_count = l_nreadable(in_link)
+        for _ = 1, p_count do
+            repeat
+                local p = l_receive(in_link)
+                -- 14: Packet parsed by Forwarder Master
+                -- If packet has got here, sanity checks were already performed
+                -- by child - so we can happily skip them
+
+                local ether_hdr = rutil.parse_ethernet_header(p)
+                assert(ether_hdr, 'Forwarder Master received invalid packet')
+
+                -- 15: Is ARP?
+                if rutil.q_is_arp(ether_hdr) then
+                    local arp_hdr = rutil.parse_arp_header(p)
+                    print('TODO: Update next-hop table')
+                    p_free(p)
+                    do break end
+                end
+
+                assert(rutil.q_is_ipv4(ether_hdr), 'Forwarder Master received non-IP / non-ARP packet')
+
+                local ip_hdr = rutil.parse_ipv4_header(self, p)
+                assert(ip_hdr, 'Unable to parse IPv4 header!')
+
+                -- Get index of next-hop stored in LPM
+                local nh_idx, err = self:lookup_nexthop_index(ip_hdr:dst())
+
+                -- 16: Next-hop exists?
+                if not nh_idx or nh_idx == nh_drop_index then
+                    -- Flood drop update to Forwarder Children
+                    print('TODO: Flood drop update to children')
+                    rutil.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 3, 0)
+                    do break end
+                end
+
+                -- Get actual next-hop struct
+                local next_hop = self:lookup_nexthop_by_index(nh_idx)
+
+                -- 17: Next-hop MAC Exists?
+                if not rutil.q_nh_mac_exists(next_hop) then
+                    counter_add(shm.dropped_nomac)
+
+                    print('TODO: Flood no-mac update to children')
+
+                    -- 18: Is Route Direct?
+                    if rutil.q_nh_is_direct(next_hop) then
+                        rutil.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 3, 1)
+                    else
+                        rutil.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 3, 0)
+                    end
+
+                    do break end
+                end
+
+                -- Get output link
+                -- TODO: Preload out_link into self.interfaces
+                local out_int  = self.interfaces[next_hop.int_idx]
+                local out_link = l_out[out_int.phy_name]
+
+                assert(out_link, 'No outbound interface found for valid route!')
+
+                -- 12: Does packet require fragmenting?
+                if rutil.q_packet_needs_fragmenting(p, out_int.mtu) then
+                    -- 13: Is DF bit set?
+                    if rutil.q_is_df_set(ip_hdr) then
+                        -- Destination Unreachable (Frag needed and DF set)
+                        counter_add(shm.dropped_mtu)
+                        rutil.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 3, 4, nil, out_int.mtu)
+                    else
+                        print('TODO: Packet needs fragmenting!')
+                        p_free(p)
+                    end
+                    do break end
+                end
+
+                -- Packet does not need fragmenting
+
+                -- Rewrite ethernet src / dst
+                ether_hdr:src(out_int.mac)
+                ether_hdr:dst(next_hop.dst_mac)
+
+                -- Set new TTL. This automatically changes the checksum incrementally to match
+                ip_hdr:ttl_decr()
+
+                -- Transmit the packet
+                l_transmit(out_link, p)
+                counter_add(shm.forwarded)
+            until true
+        end
+    end
+end
 function NLForwarder:push_interlink(l_in, l_out)
     local master      = self.master
     local l_in, l_out = self.input, self.output

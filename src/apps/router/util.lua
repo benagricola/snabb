@@ -35,6 +35,12 @@ local p_free, p_clone, p_resize, p_append = packet.free, packet.clone, packet.re
 local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwriteable
 
 -- Constants
+local valid_ethertypes = {
+    [0x0800] = true, -- IPv4
+    [0x0806] = true, -- ARP
+    [0x86DD] = true  -- IPv6
+}
+
 local e_hdr_len    = ethernet:sizeof()
 local a_hdr_len    = arp:sizeof()
 local ip_hdr_len   = ipv4:sizeof()
@@ -99,67 +105,70 @@ function _M.make_arp_request_tpl(src_mac, src_ipv4)
 end
 
 
-function _M.parse(self, ctrl_link, link_config, p)
-    local shm = self.shm
-
-    if p.length < e_hdr_len then
-       -- Packet too short.
-       p_free(p)
-       counter_add(shm.dropped_invalid)
-       return
-    end
-
-    local ether_hdr = ffi_cast(ethernet_header_ptr_type, p.data, e_hdr_len)
-
-    if not ether_hdr then
-        counter_add(shm.dropped_invalid)
-        p_free(p)
-        return
-    end
-
-    local ether_type = ether_hdr:type()
-
-    -- Return ARP frames to be forwarded or parsed
-    if ether_type == ether_type_arp then
-        local arp_hdr = ffi_cast(arp_header_ptr_type, p.data + e_hdr_len, a_hdr_len)
-        return ether_hdr, arp_hdr, nil
-    end
-
-    local ip_hdr
-
-    -- Decode IPv4 as IPv4
-    if ether_type == ether_type_ipv4 then
-        ip_hdr = ffi_cast(ipv4_header_ptr_type, p.data + e_hdr_len, p.length - e_hdr_len)
-        counter_add(shm.ipv4)
-
-    -- Decode IPv6 as IPv6
-    elseif ether_type == ether_type_ipv6 then
-        -- TODO: Implement IPv6 processing
-        counter_add(shm.ipv6)
-        p_free(p)
-        return
-    end
-
-    -- Drop unknown layer3 traffic
-    if not ip_hdr then
-        counter_add(shm.dropped_invalid)
-        p_free(p)
-        return
-    end
-
-
-    -- Validate TTL or reply with an error
-    if ip_hdr:ttl() <= 1 then
-        counter_add(shm.dropped_zerottl)
-        -- TTL Exceeded in Transit
-        print('Sending ICMP TTL Exceeded')
-        _M.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 11, 0)
-        return
-    end
-
-    return ether_hdr, nil, ip_hdr
+-- 2: Packet too short?
+function _M.q_packet_too_short(p)
+    return p.length < e_hdr_len
 end
 
+-- 3: Ethernet header exists? (checks against valid type)
+function _M.q_ethernet_header_exists(ether_hdr)
+    local ethertype = tonumber(ether_hdr:type())
+    return valid_ethertypes[ethertype]
+end
+
+-- 4: Is Arp?
+function _M.q_is_arp(ether_hdr)
+    return ether_hdr:type() == ether_type_arp
+end
+
+-- 5: Is IP (v4)?
+function _M.q_is_ipv4(ether_hdr)
+    return ether_hdr:type() == ether_type_ipv4
+end
+
+-- 6: Is Control Traffic?
+function _M.q_is_control_traffic(ip_hdr, link_config)
+    return ip_hdr:dst_eq(link_config.ip)
+end
+
+-- 7: Is TTL > 1?
+function _M.q_is_ttl_gt_1(ip_hdr)
+    return ip_hdr:ttl() <= 1
+end
+
+-- 10: Next-hop MAC Exists?
+function _M.q_nh_mac_exists(next_hop)
+    return next_hop.mac ~= mac_unknown
+end
+
+-- 11: Is Route Direct
+function _M.q_nh_mac_exists(next_hop)
+    return next_hop.direct == 1
+end
+
+-- 12: Does packet require fragmenting?
+function _M.q_packet_needs_fragmenting(p, mtu)
+    -- If packet length minus ether header is bigger than the outbound MTU
+    return (p.length - e_hdr_len) > mtu
+end
+
+-- 13: Is DF bit set?
+function _M.q_is_df_set(ip_hdr)
+    -- Then Check the DF bit. If set, drop, otherwise fragment
+    return  bit_band(ip_hdr:flags(), ip_df_mask)
+end
+
+function _M.parse_ethernet_header(p)
+    return ffi_cast(ethernet_header_ptr_type, p.data, e_hdr_len)
+end
+
+function _M.parse_arp_header(p)
+    return ffi_cast(arp_header_ptr_type, p.data + e_hdr_len, a_hdr_len)
+end
+
+function _M.parse_ipv4_header(p)
+    return ffi_cast(ipv4_header_ptr_type, p.data + e_hdr_len, p.length - e_hdr_len)
+end
 
 function _M.send_icmp_reply(self, p, eth_hdr, ip_hdr, link_config, typ, code, unused_1, unused_2)
     local shm = self.shm

@@ -33,8 +33,11 @@ local C           = ffi.C
 
 local pt          = S.types.pt
 
-local nf_index    = 2^16-1
-local now         = app.now
+
+local nh_notfound_index = 2^15-1
+local nh_drop_index     = nh_notfound_index - 1
+local nh_max            = nh_drop_index - 1
+local now               = app.now
 
 local p_free, p_clone, p_resize, p_append = packet.free, packet.clone, packet.resize, packet.append
 local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwriteable
@@ -66,6 +69,7 @@ ForwarderChild = {
         ipv4 = { counter },
         ipv6 = { counter },
         forwarded = { counter },
+        dropped_noroute = { counter },
         dropped_nomac = { counter },
         dropped_nophy = { counter },
         dropped_zerottl = { counter },
@@ -83,11 +87,11 @@ function ForwarderChild:new(conf)
     local fib_mode = fib_modes[conf.fib_mode]
     assert(fib_mode, 'FIB Mode ' .. conf.fib_mode .. ' invalid.')
 
-    o.fib        = fib_mode:new()
+    o.fib        = fib_mode:new({ keybits = 15 })
     -- Add 'not found' route as LPM expects a default entry
     -- Index is converted to uint16_t so we use the maximum value
     -- for 'not found'
-    o.fib:add_string('0.0.0.0/0', 0)
+    o.fib:add_string('0.0.0.0/0', nh_notfound_index)
 
     o.interfaces = conf.interfaces
 
@@ -101,7 +105,7 @@ function ForwarderChild:new(conf)
 
     -- Next hops are cached by index and contain a resolved mac
     o.next_hop_cache = ctable.new({
-        key_type           = ffi_typeof('uint32_t'), -- IPv4 Address
+        key_type           = ffi_typeof('uint16_t'),
         value_type         = rtypes.fib_v4_entry_t,
         max_occupancy_rate = 0.8,
         initial_size       = 100,
@@ -120,19 +124,23 @@ function ForwarderChild:push()
     self:push_interlink(l_in, l_out)
 end
 
-function ForwarderChild:lookup_nexthop(dst)
+function ForwarderChild:lookup_nexthop_index(dst)
     local nh_index = self.fib:search_bytes(dst)
-    if nh_index == 0 or nh_index == nil then
+
+    if nh_index == nh_notfound_index then
         return nil, ERR_NO_ROUTE
     end
 
+    return nh_index, nil
+
+end
+
+function ForwarderChild:lookup_nexthop_by_index(nh_idx)
     -- If we're not a FIB master then only return results
     -- from cache. We learn cache items over interlink.
-    if not self.next_hop_cache[nh_index] then
-        print('Found route but no next-hop, FIX')
-        return nil, ERR_NO_ROUTE
-    end
-    return self.next_hop_cache[nh_index]
+    local nh = self.next_hop_cache:lookup_ptr(ffi_cast('uint16_t', nh_idx))
+    assert(nh, 'Attempted to look up a next hop by index that does not exist!')
+    return nh.value
 end
 
 -- Handle incoming transit (routable) packets
@@ -140,6 +148,8 @@ function ForwarderChild:push_transit(l_in, l_out)
     local interfaces = self.interfaces
     local l_in, l_out = self.input, self.output
     local l_master    = l_out['to_master']
+
+    local shm = self.shm
 
     assert(l_master, 'App link to FIB master does not exist')
 
@@ -150,45 +160,127 @@ function ForwarderChild:push_transit(l_in, l_out)
         if in_link then
             local p_count = l_nreadable(in_link)
             for _ = 1, p_count do
-                local p = l_receive(in_link)
-                local ether_hdr, arp_hdr, ip_hdr = rutil.parse(self, ctrl_link, link_config, p)
+                repeat
+                    local p = l_receive(in_link)
+                    -- 1: Packet parsed by Forwarder Child
 
-                -- If packet has no ethernet header, we cant read it!
-                if not ether_hdr then
-                    p_free(p)
-                else
-                    -- Found an ARP request. Forward to ctrl link. Clone and forward to master.
-                    -- Master will flood back over interlink for processing
-                    if arp_hdr then
+                    -- 2: Packet too short?
+                    if rutil.q_packet_too_short(p) then
+                       p_free(p)
+                       counter_add(shm.dropped_invalid)
+                       do break end
+                    end
+
+                    local ether_hdr = rutil.parse_ethernet_header(p)
+
+                    -- 3: Ethernet header exists?
+                    if not rutil.q_ethernet_header_exists(ether_hdr) then
+                        counter_add(shm.dropped_invalid)
+                        p_free(p)
+                        do break end
+                    end
+
+                    -- 4: Is ARP?
+                    if rutil.q_is_arp(ether_hdr) then
                         local p_master = p_clone(p)
                         l_transmit(ctrl_link, p)
                         l_transmit(l_master, p_master)
-
-                    elseif ip_hdr then
-
-                        -- Forward control traffic directly.
-                        if ip_hdr:dst_eq(link_config.ip) then
-                            counter_add(shm.control)
-                            l_transmit(ctrl_link, p)
-                        else
-                            local next_hop, err = self:lookup_nexthop(ip_hdr:dst())
-
-                            -- If we found a next hop
-                            if next_hop then
-                                print('Route packet!')
-
-                                p_free(p)
-                                -- rutil.route(self, { ether_hdr = ether_hdr, ip_hdr = ip_hdr, link_config = link_config, p = p, dst = ip_hdr:dst()})
-                            else
-                                --print('[' .. self.id .. ']: Forwarding packet to master process')
-                                l_transmit(l_master, p)
-                            end
-                        end
-                    else
-                        print('Child found non-arp, non-ip packet. Forwarding to ctrl')
-                        l_transmit(ctrl_link, p)
+                        do break end
                     end
-                end
+
+                    -- 5: Is IP (v4)?
+                    if not rutil.q_is_ipv4(ether_hdr) then
+                        counter_add(shm.ipv4)
+                        l_transmit(ctrl_link, p)
+                        do break end
+                    end
+
+                    local ip_hdr = rutil.parse_ipv4_header(self, p)
+                    assert(ip_hdr, 'Unable to parse IPv4 header!')
+
+                    -- 6: Is Control Traffic?
+                    if rutil.q_is_control_traffic(ip_hdr, link_config) then
+                        -- Forward control traffic directly.
+                        counter_add(shm.control)
+                        l_transmit(ctrl_link, p)
+                        do break end
+                    end
+
+                    -- 7: Is TTL > 1?
+                    if not rutil.q_is_ttl_gt_1(ip_hdr) then
+                         -- TTL Exceeded in Transit
+                         counter_add(shm.dropped_zerottl)
+                         rutil.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 11, 0)
+                         do break end
+                    end
+
+                    -- Get index of next-hop stored in LPM
+                    local nh_idx, err = self:lookup_nexthop_index(ip_hdr:dst())
+
+                    -- 8: Cached next-hop exists?
+                    if not nh_idx then
+                        l_transmit(l_master, p)
+                        do break end
+                    end
+
+                    -- 9: Cached next-hop specifies drop?
+                    if nh_idx == nh_drop_index then
+                         counter_add(shm.dropped_noroute)
+                         rutil.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 3, 0)
+                         do break end
+                    end
+
+                    -- Get actual next-hop struct
+                    local next_hop = self:lookup_nexthop_by_index(nh_idx)
+
+                    -- 10: Next-hop MAC Exists?
+                    if not rutil.q_nh_mac_exists(next_hop) then
+                        counter_add(shm.dropped_nomac)
+
+                        -- 11: Is Route Direct?
+                        if rutil.q_nh_is_direct(next_hop) then
+                            rutil.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 3, 1)
+                        else
+                            rutil.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 3, 0)
+                        end
+
+                        do break end
+                    end
+
+                    -- Get output link
+                    -- TODO: Preload out_link into self.interfaces
+                    local out_int  = self.interfaces[next_hop.int_idx]
+                    local out_link = l_out[out_int.phy_name]
+
+                    assert(out_link, 'No outbound interface found for valid route!')
+
+                    -- 12: Does packet require fragmenting?
+                    if rutil.q_packet_needs_fragmenting(p, out_int.mtu) then
+                        -- 13: Is DF bit set?
+                        if rutil.q_is_df_set(ip_hdr) then
+                            -- Destination Unreachable (Frag needed and DF set)
+                            counter_add(shm.dropped_mtu)
+                            rutil.send_icmp_reply(self, p, ether_hdr, ip_hdr, link_config, 3, 4, nil, out_int.mtu)
+                        else
+                            print('TODO: Packet needs fragmenting!')
+                            p_free(p)
+                        end
+                        do break end
+                    end
+
+                    -- Packet does not need fragmenting
+
+                    -- Rewrite ethernet src / dst
+                    ether_hdr:src(out_int.mac)
+                    ether_hdr:dst(next_hop.dst_mac)
+
+                    -- Set new TTL. This automatically changes the checksum incrementally to match
+                    ip_hdr:ttl_decr()
+
+                    -- Transmit the packet
+                    l_transmit(out_link, p)
+                    counter_add(shm.forwarded)
+                until true
             end
         end
     end
@@ -204,20 +296,11 @@ function ForwarderChild:push_interlink(l_in, l_out)
     if link then
         local p_count = l_nreadable(link)
         for _ = 1, p_count do
+            -- Parse route update here!
+
             local p = l_receive(link)
-            local ether_hdr, arp_hdr, ip_hdr = rutil.parse(self, nil, nil, p)
-
-            -- TODO: Check for routing update and parse
-
-            -- Found an ARP request. Forward to master if necessary
-            if arp_hdr then
-                rutil.process_arp(self, arp_hdr)
-                p_free(p)
-
-            elseif ip_hdr then
-                print('Child received IP packet over interlink. WAT DO?')
-                p_free(p)
-            end
+            print('Received interlink')
+            p_free(p)
         end
     end
 end

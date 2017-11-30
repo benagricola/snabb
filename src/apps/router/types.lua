@@ -327,3 +327,10 @@ fib_v4_entry_t = ffi_typeof([[
    }
 ]])
 
+rtupdate_hdr_t = ffi_typeof([[
+   struct {
+      uint32_t prefix;
+      uint8_t  mask;
+   }
+
+]])
