@@ -198,7 +198,9 @@ end
 
 -- Processes a single received packet. Classify it by defined rules and place
 -- into a bucket.
+-- If packet is sampled, then forward it to pcap dump as well.
 function Detector:process_packet(p)
+    local violated   = self.output.violated
     local classifier = self.classifier
     local buckets    = self.buckets
 
@@ -211,7 +213,11 @@ function Detector:process_packet(p)
     end
 
     local bucket = buckets:get_bucket_by_id(bucket_id)
-    bucket:add_packet(p)
+    local sampled = bucket:add_packet(p)
+
+    if sampled then
+        link_transmit(pcap, packet_clone(p))
+    end
 
     -- TODO: If rule is in violation, log packet?
 

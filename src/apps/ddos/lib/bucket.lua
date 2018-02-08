@@ -101,6 +101,7 @@ end
 
 
 function Bucket:add_packet(packet)
+    local sampled = false
     local sample_rate = self.sample_rate
 
     local cur_packets = self.cur_packets + 1
@@ -111,10 +112,12 @@ function Bucket:add_packet(packet)
     if self.violated and math_fmod(cur_packets, sample_rate) == 0 then
         local sampler = self.sampler
         sampler:sample(packet)
+        sampled = true 
     end
 
     self.cur_packets = cur_packets
     self.cur_bits    = cur_bits
+    return sampled
 end
 
 function Bucket:calculate_rate(now)

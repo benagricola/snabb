@@ -24,6 +24,7 @@ local long_opts = {
     config   = "c",
     input    = "i",
     output   = "o",
+    violated = "v",
     group    = "g",
     core     = "n",
     busywait = "b",
@@ -52,6 +53,7 @@ function parse_args(args)
         config_file_path = "/etc/radish/profiler.json",
         int_in  = {},
         int_out = {},
+        int_vio = {},
     }
 
     local handlers = {}
@@ -62,6 +64,9 @@ function parse_args(args)
     end
     function handlers.o (arg)
         table.insert(opt.int_out, arg)
+    end
+    function handlers.v (arg)
+        table.insert(opt.int_vio, arg)
     end
     function handlers.g (arg) opt.group            = arg end
     function handlers.n (arg) opt.core             = arg end
@@ -74,7 +79,7 @@ function parse_args(args)
         opt.in_vlan = vlans
     end
 
-    args = lib.dogetopt(args, handlers, "hc:i:o:g:c:n:b", long_opts)
+    args = lib.dogetopt(args, handlers, "hc:i:o:v:g:c:n:b", long_opts)
 
     if #opt.int_in < 1 then
         log_critical("Missing argument -i")
@@ -213,6 +218,19 @@ function run (args)
 
         local linkspec = "ddos.output -> " .. int_name .. ".input"
         log_info("Configuring output link %s", linkspec)
+        config.link(c, linkspec)
+    end
+
+    -- Configure violated interfaces, sourced from ddos.violated
+    for _, interface in ipairs(opt.int_vio) do
+        local int_name = config_interface(c, interface)
+        if not int_name then
+            log_critical("Unable to configure app for interface %s!", interface)
+            main.exit(1)
+        end
+
+        local linkspec = "ddos.violated -> " .. int_name .. ".input"
+        log_info("Configuring violated link %s", linkspec)
         config.link(c, linkspec)
     end
 
