@@ -40,8 +40,7 @@ Detector = {}
 
 
 -- I don't know what I'm doing
-function Detector:new (arg)
-    local conf = arg and config.parse_app_arg(arg) or {}
+function Detector:new (conf)
 
     local o = {
         config_file_path = conf.config_file_path,
