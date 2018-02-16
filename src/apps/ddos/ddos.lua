@@ -215,7 +215,7 @@ function Detector:process_packet(p)
     local sampled = bucket:add_packet(p)
 
     if sampled then
-        link_transmit(pcap, packet_clone(p))
+        link_transmit(violated, packet_clone(p))
     end
 
     -- TODO: If rule is in violation, log packet?
