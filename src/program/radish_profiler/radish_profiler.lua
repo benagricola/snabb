@@ -112,6 +112,7 @@ function config_interface(c, interface)
     if string.find(interface, "tap") == 1 or string.find(interface, "tun") == 1 then
         log_info("Interface %s is tap/tun...", interface)
         config.app(c, ifname, tap.Tap, interface)
+        int_ctr = int_ctr + 1
         return ifname
     end
 
@@ -146,6 +147,7 @@ function config_interface(c, interface)
     -- Assume anything still here is a RawSocket device
     log_info("Interface %s is RawSocket...", interface)
     config.app(c, ifname, raw.RawSocket, interface)
+    int_ctr = int_ctr + 1
     return ifname
 end
 
