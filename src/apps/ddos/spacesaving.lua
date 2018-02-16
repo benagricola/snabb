@@ -134,7 +134,7 @@ local function esort(a, b)
     return a.hirate > b.hirate
 end
 
-function SpaceSaving:getAll(nowTs)
+function SpaceSaving:getAll(nowTs, num)
     local olist = self.olist
     local elements = {}
     for i = #olist, 1, -1 do
@@ -154,6 +154,14 @@ function SpaceSaving:getAll(nowTs)
     end
 
     table.sort(elements, esort)
+
+    if num then
+        local sliced = {}
+        for i = 1, num, 1 do
+            sliced[i] = elements[i]
+        end
+        return sliced
+    end
     return elements
 end
 

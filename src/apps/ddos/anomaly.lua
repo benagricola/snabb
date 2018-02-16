@@ -4,25 +4,18 @@ local S              = require("syscall")
 
 local app            = require("core.app")
 local app_now        = app.now
-local util  = require("apps.wall.util")
-local const = require("apps.wall.constants")
-local lib   = require("core.lib")
-local math  = require("math")
-local counter        = require("core.counter")
 local link           = require("core.link")
 local link_nreadable = link.nreadable
 local link_receive   = link.receive
 local link_transmit  = link.transmit
-local link_empty     = link.empty
-local os             = require("os")
-local os_time        = os.time
 local packet         = require("core.packet")
 local packet_free    = packet.free
 local packet_clone   = packet.clone
+local msgpack        = require("lib.msgpack")
+local m_pack         = msgpack.pack
+local m_unpack       = msgpack.unpack
 local ffi            = require("ffi")
 local C              = ffi.C
-local ipv4  = require("lib.protocol.ipv4")
-local ipv6  = require("lib.protocol.ipv6")
 local BasicScanner   = require("apps.ddos.basic_scanner")
 local SpaceSaving    = require("apps.ddos.spacesaving")
 
@@ -48,16 +41,18 @@ function Anomaly:new (conf)
         core          = conf.core or 0,
         scanner       = BasicScanner:new(),
         tables        = {},
+        status_file_path = '/dev/shm/anomaly-status',
+        status_file_perm = '0666',
         aggregations  = {
             { name = 'proto',               fields = { 'proto' }, max_values = 10},
-            { name = 'proto_src',           fields = { 'proto', 'src_addr' }, max_values = 2048},
-            { name = 'proto_dst',           fields = { 'proto', 'dst_addr' }, max_values = 2048},
-            { name = 'proto_src_port',      fields = { 'proto', 'src_port'}, max_values = 2048}, 
-            { name = 'proto_dst_port',      fields = { 'proto', 'dst_port'}, max_values = 2048}, 
-            { name = 'proto_2way',          fields = { 'proto', 'src_addr', 'dst_addr'}, max_values = 4096}, 
-          --  { name = 'proto_2way_src_port', fields = { 'proto', 'src_addr', 'dst_addr', 'src_port'}}, 
-          -- { name = 'proto_2way_dst_port', fields = { 'proto', 'src_addr', 'dst_addr', 'dst_port'}}, 
-          --  { name = 'proto_5tuple',        fields = { 'proto', 'src_addr', 'dst_addr', 'src_port', 'dst_port'}}, 
+            { name = 'proto_src',           fields = { 'proto', 'src_addr' }, max_values = 256},
+            { name = 'proto_dst',           fields = { 'proto', 'dst_addr' }, max_values = 256},
+            { name = 'proto_src_port',      fields = { 'proto', 'src_port'}, max_values = 256}, 
+            { name = 'proto_dst_port',      fields = { 'proto', 'dst_port'}, max_values = 256}, 
+            { name = 'proto_2way',          fields = { 'proto', 'src_addr', 'dst_addr'}, max_values = 256}, 
+            { name = 'proto_2way_src_port', fields = { 'proto', 'src_addr', 'dst_addr', 'src_port'}, max_values = 256}, 
+            { name = 'proto_2way_dst_port', fields = { 'proto', 'src_addr', 'dst_addr', 'dst_port'}, max_values = 256}, 
+            { name = 'proto_5tuple',        fields = { 'proto', 'src_addr', 'dst_addr', 'src_port', 'dst_port'}, max_values = 1024}, 
         }
     }
 
@@ -120,24 +115,67 @@ end
 
 
 function Anomaly:report()
-    print("\27[2J")
-    local tables = self.tables
-    for _, aggregation in ipairs(self.aggregations) do
-        local name = aggregation.name
-        if not tables[name] then
-            tables[name] = SpaceSaving:new(aggregation.max_values or 25, aggregation.half_life or 10)
-        end
-        print(name) 
-        for i, v in pairs(tables[name]:getAll(get_time())) do
-            if i <= 5  then
-                print(string.format("\t%-40s\t\t%10.2f\t%10.2f\t%11d\t%11d", table.concat(v.data, '/'), v.hirate, v.lorate, v.hicount, v.locount))
-            end
-        end
-        print('') 
-        print('') 
-    end
+    self:write_status()
+
+--    local out = {"\27[2J"}
+--    local tables = self.tables
+--    for _, aggregation in ipairs(self.aggregations) do
+--        local name = aggregation.name
+--        if not tables[name] then
+--            tables[name] = SpaceSaving:new(aggregation.max_values or 25, aggregation.half_life or 10)
+--        end
+--        out[#out+1] = string.format("\t%-40s\t\t%-12s\t%-12s\t%-11s\t%-11s", name, 'Rate (Hi)', 'Rate (Lo)', 'Count (Hi)', 'Count (Lo)')
+--        out[#out+1] = ''
+--        for i, v in pairs(tables[name]:getAll(get_time())) do
+--            if i <= 5 then
+--                out[#out+1] = string.format("\t%-40s\t\t%10.2f\t%10.2f\t%11d\t%11d", table.concat(v.data, '/'), v.hirate, v.lorate, v.hicount, v.locount)
+--            end
+--        end
+--        out[#out+1] = ''
+--    end
+--    print(table.concat(out, "\n"))
 end
 
+function Anomaly:write_status()
+    local status_file_path = self.status_file_path
+    local status_file_perm = self.status_file_perm
+    local status_temp_path = status_file_path .. '-temp'
+
+    -- Write file and then rename into new file
+    local status_file = assert(io.open(status_temp_path, "w"))
+    local tables = self.tables
+    local status = {
+        aggregations = {},
+        timestamp     = get_time(),
+    }
+
+    for _, aggregation in ipairs(self.aggregations) do
+        local name = aggregation.name
+        if not status.aggregations[name] then
+            status.aggregations[name] = {}
+        end
+
+        if tables[name] then
+            for i, v in ipairs(tables[name]:getAll(get_time(), 30)) do
+               status.aggregations[name][i] = { key = v.data, rate = v.hirate }  
+            end
+        end 
+    end
+
+    status_file:write(m_pack(status))
+    status_file:flush()
+    status_file:close()
+
+    -- Set permissions
+    if not S.chmod(status_temp_path, status_file_perm) then
+        log_error("Unable to set mode on anomaly status file '%s' to '%s'!", status_temp_path, status_file_perm)
+    end
+
+    -- Rename new file
+    if not S.rename(status_temp_path, status_file_path) then
+        log_error("Unable to rename anomaly status file '%s' to '%s'!", status_temp_path, status_file_path)
+    end
+end
 
 function Anomaly:stop()
 end

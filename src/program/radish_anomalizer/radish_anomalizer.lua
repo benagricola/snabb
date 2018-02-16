@@ -28,6 +28,8 @@ local long_opts = {
     group    = "g",
     core     = "n",
     busywait = "b",
+    jit      = "j",
+    duration = "d",
     invlan   = 1,
 }
 
@@ -50,6 +52,10 @@ end
 function parse_args(args)
     local opt = {
         report = false,
+        loom = false,
+        profiling = false,
+        traceprofiling = false,
+        duration = nil,
         int_in  = {},
         int_out = {},
     }
@@ -63,6 +69,7 @@ function parse_args(args)
         table.insert(opt.int_out, arg)
     end
     function handlers.g (arg) opt.group            = arg end
+    function handlers.d (arg) opt.duration         = arg end
     function handlers.n (arg) opt.core             = arg end
     function handlers.b (arg) opt.busywait         = true end
     function handlers.invlan (arg)
@@ -72,8 +79,34 @@ function parse_args(args)
         end
         opt.in_vlan = vlans
     end
+    function handlers.j (arg)
+        if arg:match("^v") then
+            local file = arg:match("^v=(.*)")
+            if file == '' then file = nil end
+            require("jit.v").start(file)
+        elseif arg:match("^loom") then
+            local opts, file = arg:match("^loom=([^,]*),?(.*)")
+            if file == '' then file = nil end
+            opt.loom_tpl = opts
+            opt.loom_out = file
+            require("jit.loom").on()
+            opt.loom = true
+        elseif arg:match("^p") then
+            local opts, file = arg:match("^p=([^,]*),?(.*)")
+            if file == '' then file = nil end
+            require("jit.p").start(opts, file)
+            opt.profiling = true
+        elseif arg:match("^dump") then
+            local opts, file = arg:match("^dump=([^,]*),?(.*)")
+            if file == '' then file = nil end
+            require("jit.dump").on(opts, file)
+        elseif arg:match("^tprof") then
+            require("lib.traceprof.traceprof").start(1e6, 1)
+            opt.traceprofiling = true
+        end
+    end
 
-    args = lib.dogetopt(args, handlers, "hi:o:g:c:n:b", long_opts)
+    args = lib.dogetopt(args, handlers, "hi:o:g:c:n:j:d:b", long_opts)
 
     if #opt.int_in < 1 then
         log_critical("Missing argument -i")
@@ -225,7 +258,22 @@ function run (args)
 
     engine.busywait = opt.busywait and true or false
     engine.configure(c)
-    engine.main({report = {showlinks = true}})
+    engine.main({report = {showlinks = true}, duration=opt.duration})
+
+    if opt.profiling then
+        require("jit.p").stop() 
+    end
+    if opt.loom then
+        local traces, funcs = require("jit.loom").off()
+        local tpl = require("jit.loom").template(opt.loom_tpl)
+        local loom = tpl(traces, funcs)
+        local out = opt.loom_out
+        out = type(out)=='string' and assert(io.open(out, 'w')) or out or io.stdout
+        out:write(loom)
+    end
+    if opt.traceprofiling then
+        require("lib.traceprof.traceprof").stop()
+    end
 end
 
 function selftest()
