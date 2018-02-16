@@ -42,7 +42,6 @@ local ipv4hdr_pseudo_t = ffi.typeof[[
 -- IPv4 Address Type
 local ipv4_addr_t = ffi.typeof('struct { uint32_t addr; uint8_t mask; }')
 local ipv4_addr_t_size = ffi.sizeof(ipv4_addr_t)
-local ipv4_addr_mt = { __index = ipv4_addr_mt }
 local uchar_ptr_t = ffi.typeof('unsigned char *')
 
 local ipv4 = subClass(header)
