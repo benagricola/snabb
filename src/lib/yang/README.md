@@ -24,7 +24,6 @@ module snabb-simple-router {
   leaf active { type boolean; default true; }
 
   container routes {
-    presence true;
     list route {
       key addr;
       leaf addr { type inet:ipv4-address; mandatory true; }
@@ -81,13 +80,9 @@ syntax from the schema, in the following way:
   is the name of the leaf, and the value is in the right syntax for
   the leaf's type.  (More on value types below.)
 
-- A `container`'s configuration can be one of two ways.  Firstly, if
-  its `presence` attribute is `true`, then the container's
-  configuration is the container's keyword followed by the
-  configuration of its data node children, like `keyword {
-  configuration... }`.  Otherwise if its `presence` is `false`, then a
-  container's configuration is just its data node children's
-  configuration, in any order.
+- A `container`'s configuration is the container's keyword followed by
+  the configuration of its data node children, like `keyword {
+  configuration... }`.
 
 - A `leaf-list`'s configuration is a sequence of 0 or more instances
   of `keyword value;`, as in `leaf`.
@@ -125,10 +120,7 @@ routes {
 Except in special cases as described in RFC 6020, order is
 insignificant.  You could have `active false;` at the end, for
 example, and `route { addr 1.2.3.4; port 1; }` is the same as `route {
-port 1; addr 1.2.3.4; }`.  Note that if `presence` is false (the
-default), the grammar is the same except there's no outer `routes { }`
-wrapper; the `route` statements would be at the same level as
-`active`.
+port 1; addr 1.2.3.4; }`.
 
 The surface syntax of our configuration format is the same as for YANG
 schemas; `"1.2.3.4"` is the same as `1.2.3.4`.  Snabb follows the XML
@@ -149,14 +141,14 @@ expensive, especially if the data file includes a large routing table or
 other big structure.  It can be useful to pay for this this parsing and
 validation cost "offline", without interrupting a running data plane.
 
-For this reason, Snabb support compiling configurations to binary data.
-A data plane can load a compiled configuration without any validation,
-very cheaply.  Users can explicitly call the `compile_data_for_schema`
-or `compile_data_for_schema_by_name` functions.  Support is planned also
-for automatic compilation and of source configuration files as well, so
-that the user can just edit configurations as text and still take
-advantage of the speedy binary configuration loads when nothing has
-changed.
+For this reason, Snabb support compiling configurations to binary
+data.  A data plane can load a compiled configuration without any
+validation, very cheaply.  Users can explicitly call the
+`compile_config_for_schema` or `compile_config_for_schema_by_name`
+functions.  Support is planned also for automatic compilation and of
+source configuration files as well, so that the user can just edit
+configurations as text and still take advantage of the speedy binary
+configuration loads when nothing has changed.
 
 #### Querying and updating configurations
 
@@ -215,7 +207,7 @@ Optional entries that may be present in the *parameters* table include:
    built against this particular schema revision date.
 
 For more information on the format of the returned value, see the
-documentation below for `load_data_for_schema`.
+documentation below for `load_config_for_schema`.
 
 — Function **load_schema** *src* *filename*
 
@@ -238,7 +230,19 @@ schema itself, or as `import *name* { ... }` in other YANG modules that
 import this module.  *revision* optionally indicates that a certain
 revision data should be required.
 
-— Function **load_data_for_schema** *schema* *src* *filename*
+— Function **add_schema** *src* *filename*
+
+Add the YANG schema from the string *src* to Snabb's database of YANG
+schemas, making it available to `load_schema_by_name` and related
+functionality.  *filename* is used when signalling any parse errors.
+Returns the name of the newly added schema.
+
+— Function **add_schema_file** *filename*
+
+Like `add_schema`, but reads the YANG schema in from a file.  Returns
+the name of the newly added schema.
+
+— Function **load_config_for_schema** *schema* *src* *filename*
 
 Given the schema object *schema*, load the configuration from the string
 *src*.  Returns a parsed configuration as a plain old Lua value that
@@ -260,9 +264,6 @@ In this case, the result would be a table with two keys, `active` and
 `routes`.  The value of the `active` key would be Lua boolean `true`.
 
 The `routes` container is just another table of the same kind.
-(Remember however that only containers with `presence true;` have
-corresponding nodes in the configuration syntax, and corresponding
-sub-tables in the result configuration objects.)
 
 Inside the `routes` container is the `route` list, which is represented
 as an associative array.  The particular representation for the
@@ -274,7 +275,7 @@ below for details.  In this case the `route` list compiles to a
 ```lua
 local yang = require('lib.yang.yang')
 local ipv4 = require('lib.protocol.ipv4')
-local data = yang.load_data_for_schema(router_schema, conf_str)
+local data = yang.load_config_for_schema(router_schema, conf_str)
 local port = data.routes.route:lookup_ptr(ipv4:pton('1.2.3.4')).value.port
 assert(port == 1)
 ```
@@ -301,13 +302,13 @@ Let us return to the representation of compound configurations, like
 compiled to raw FFI data.  A configuration's shape is determined by its
 schema.  A schema node whose data will be fixed is either a leaf whose
 type is numeric or boolean and which is either mandatory or has a
-default value, or a container (`leaf-list`, `container` with presence,
-or `list`) whose elements are all themselves fixed.
+default value, or a container (`leaf-list`, `container`, or `list`)
+whose elements are all themselves fixed.
 
-In practice this means that a fixed `container` with presence will be
-compiled to an FFI `struct` type.  This is mostly transparent from the
-user perspective, as in LuaJIT you access struct members by name in the
-same way as for normal Lua tables.
+In practice this means that a fixed `container` will be compiled to an
+FFI `struct` type.  This is mostly transparent from the user
+perspective, as in LuaJIT you access struct members by name in the same
+way as for normal Lua tables.
 
 A fixed `leaf-list` will be compiled to an FFI array of its element
 type, but on the Lua side is given the normal 1-based indexing and
@@ -340,23 +341,18 @@ pairs(foo)`, which is often good enough in this case.
 Note that there are a number of value types that are not implemented,
 including some important ones like `union`.
 
-— Function **load_data_for_schema_by_name** *schema_name* *name* *filename*
+— Function **load_config_for_schema_by_name** *schema_name* *name* *filename*
 
-Like `load_data_for_schema`, but identifying the schema by name instead
+Like `load_config_for_schema`, but identifying the schema by name instead
 of by value, as in `load_schema_by_name`.
 
-— Function **print_data_for_schema** *schema* *data* *file*
+— Function **print_config_for_schema** *schema* *data* *file*
 
 Serialize the configuration *data* as text via repeated calls to the
 `write` method of *file*.  At the end, the `flush` method is called on
 *file*.  *schema* is the schema that describes *data*.
 
-— Function **print_data_for_schema_by_name** *schema_name* *name* *filename*
-
-Like `print_data_for_schema`, but identifying the schema by name instead
-of by value, as in `load_schema_by_name`.
-
-— Function **compile_data_for_schema** *schema* *data* *filename* *mtime*
+— Function **compile_config_for_schema** *schema* *data* *filename* *mtime*
 
 Compile *data*, using a compiler generated for *schema*, and write out
 the result to the file named *filename*.  *mtime*, if given, should be a
@@ -365,10 +361,10 @@ the source file.  This information will be serialized in the compiled
 file, and may be used when loading the file to determine whether the
 configuration is up to date.
 
-— Function **compile_data_for_schema_by_name** *schema_name* *data* *filename* *mtime*
+— Function **compile_config_for_schema_by_name** *schema_name* *data* *filename* *mtime*
 
-Like `compile_data_for_schema_by_name`, but identifying the schema by
-name instead of by value, as in `load_schema_by_name`.
+Like `compile_config_for_schema_by_name`, but identifying the schema
+by name instead of by value, as in `load_schema_by_name`.
 
 — Function **load_compiled_data_file** *filename*
 
@@ -380,8 +376,8 @@ value will be table containing four keys:
     compiled.
  * `revision_date`: The revision date  of the schema for which this file
     was compiled, or the empty string (`''`) if unknown.
- * `source_mtime`: An `mtime` table, as for `compile_data_for_schema`.
+ * `source_mtime`: An `mtime` table, as for `compile_config_for_schema`.
     If no mtime was written into the file, both `secs` and `nsecs` will
     be zero.
  * `data`: The configuration data, in the same format as returned by
-    `load_data_for_schema`.
+    `load_config_for_schema`.

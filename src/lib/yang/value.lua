@@ -78,10 +78,25 @@ function types.decimal64.tostring(val)
    return tostring(val)
 end
 
-types.empty = unimplemented('empty')
-types.identityref = unimplemented('identityref')
+types.empty = {}
+function types.empty.parse (str, what)
+   return assert(str == nil, "not empty value for "..what)
+end
+function types.empty.tostring (val)
+   return ""
+end
+
+types.identityref = {}
+function types.identityref.parse(str, what)
+   -- References are expanded in the validation phase.
+   return assert(str, 'missing value for '..what)
+end
+function types.identityref.tostring(val)
+   return val
+end
+
 types['instance-identifier'] = unimplemented('instance-identifier')
-leafref = unimplemented('leafref')
+types.leafref = unimplemented('leafref')
 
 types.string = {}
 function types.string.parse(str, what)
@@ -126,7 +141,7 @@ types['mac-address'] = {
 }
 
 types['ipv4-prefix'] = {
-   ctype = 'struct { uint8_t[4] prefix; uint8_t len; }',
+   ctype = 'struct { uint8_t prefix[4]; uint8_t len; }',
    parse = function(str, what)
       local prefix, len = str:match('^([^/]+)/(.*)$')
       return { ipv4_pton(prefix), util.tointeger(len, 1, 32) }
@@ -135,7 +150,7 @@ types['ipv4-prefix'] = {
 }
 
 types['ipv6-prefix'] = {
-   ctype = 'struct { uint8_t[16] prefix; uint8_t len; }',
+   ctype = 'struct { uint8_t prefix[16]; uint8_t len; }',
    parse = function(str, what)
       local prefix, len = str:match('^([^/]+)/(.*)$')
       return { assert(ipv6:pton(prefix)), util.tointeger(len, 1, 128) }

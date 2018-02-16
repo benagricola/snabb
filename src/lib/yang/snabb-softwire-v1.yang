@@ -80,8 +80,6 @@ module snabb-softwire-v1 {
         transmission.";
 
       container error-rate-limiting {
-        presence true;
-
         leaf packets {
           type uint32;
           description
@@ -104,8 +102,6 @@ module snabb-softwire-v1 {
         fragmented packets.";
 
       container reassembly {
-        presence true;
-
         leaf max-fragments-per-packet {
           type uint32 { range 1..max; }
           default 20;
@@ -130,14 +126,27 @@ module snabb-softwire-v1 {
       }
     }
 
+    leaf name {
+      type string;
+      description
+        "Name of lwAFTR instance. This must be unique amongst the Snabb
+         processes on the system. This may be specified either here, in the
+         YANG configuration or via the command line when the lwAFTR is started.
 
+         The order of presidence for this leaf is as followers:
+         1. The name set on an already running lwAFTR instance via snabb set.
+         2. A command line option to specify the name upon starting the lwAFTR
+            instance (i.e. overriding this value).
+         3. The value here in the configuration when starting a lwaftr instance.
+
+         If no name is specified the lwaftr can be referred to using the PID of
+         the lwAFTR process on the system.";
+    }
 
     container external-interface {
       description
        "Configuration for the external, internet-facing IPv4
         interface.";
-
-      presence true;
 
       leaf ip {
         type inet:ipv4-address;
@@ -167,7 +176,6 @@ module snabb-softwire-v1 {
       uses reassembly;
 
       container next-hop {
-        presence true;
         leaf ip {
           type inet:ipv4-address;
           description
@@ -186,8 +194,6 @@ module snabb-softwire-v1 {
     container internal-interface {
       description
        "Configuration for the internal IPv6 interface.";
-
-      presence true;
 
       leaf ip {
         type inet:ipv6-address;
@@ -217,7 +223,6 @@ module snabb-softwire-v1 {
       uses reassembly;
 
       container next-hop {
-        presence true;
         leaf ip {
           type inet:ipv6-address;
           description
@@ -240,332 +245,221 @@ module snabb-softwire-v1 {
           two B4s.";
       }
     }
-  }
 
-  container binding-table {
-    description
-     "A collection of softwires (tunnels), along with a description
-      of the IPv4 and IPv6 addresses handled by the lwAFTR.";
-
-    presence true;
-
-    list psid-map {
+    container binding-table {
       description
-       "The set of IPv4 addresses managed by the lwAFTR, along with
-        the way in which those IPv4 addresses share ports.  A PSID map
-        entry associates a PSID length, shift, and
-        reserved-ports-bit-count with each IPv4 address served by
-        the lwAFTR.
+       "A collection of softwires (tunnels), along with a description
+        of the IPv4 and IPv6 addresses handled by the lwAFTR.";
 
-        The lightweight 4-over-6 architecture supports sharing of
-        IPv4 addresses by partitioning the space of TCP/UDP/ICMP
-        ports into disjoint \"port sets\".  Each softwire associated
-        with an IPv4 address corresponds to a different set of ports
-        on that address.  The way that the ports are partitioned is
-        specified in RFC 7597:  each address has an associated set
-        of parameters that specifies how to compute a \"port set
-        identifier\" (PSID) from a given port.
-
-                             0                   1
-                             0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
-                            +-----------+-----------+-------+
-              Ports in      |     A     |    PSID   |   j   |
-           the CE port set  |    > 0    |           |       |
-                            +-----------+-----------+-------+
-                            |  a bits   |  k bits   |m bits |
-
-             Figure 2: Structure of a Port-Restricted Port Field
-
-          Source: http://tools.ietf.org/html/rfc7597#section-5.1
-
-        We find the specification's names to be a bit obtuse, so we
-        refer to them using the following names:
-
-          a bits = reserved-ports-bit-count.
-          k bits = psid-length.
-          m bits = shift.";
-
-      key addr;
-
-      leaf addr {
-        type inet:ipv4-address;
-        mandatory true;
+      list psid-map {
         description
-         "Public IPv4 address managed by the lwAFTR.";
+         "The set of IPv4 addresses managed by the lwAFTR, along with
+          the way in which those IPv4 addresses share ports.  A PSID map
+          entry associates a PSID length, shift, and
+          reserved-ports-bit-count with each IPv4 address served by
+          the lwAFTR.
+
+          The lightweight 4-over-6 architecture supports sharing of
+          IPv4 addresses by partitioning the space of TCP/UDP/ICMP
+          ports into disjoint \"port sets\".  Each softwire associated
+          with an IPv4 address corresponds to a different set of ports
+          on that address.  The way that the ports are partitioned is
+          specified in RFC 7597:  each address has an associated set
+          of parameters that specifies how to compute a \"port set
+          identifier\" (PSID) from a given port.
+
+                               0                   1
+                               0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5
+                              +-----------+-----------+-------+
+                Ports in      |     A     |    PSID   |   j   |
+             the CE port set  |    > 0    |           |       |
+                              +-----------+-----------+-------+
+                              |  a bits   |  k bits   |m bits |
+
+               Figure 2: Structure of a Port-Restricted Port Field
+
+            Source: http://tools.ietf.org/html/rfc7597#section-5.1
+
+          We find the specification's names to be a bit obtuse, so we
+          refer to them using the following names:
+
+            a bits = reserved-ports-bit-count.
+            k bits = psid-length.
+            m bits = shift.";
+
+        key addr;
+
+        leaf addr {
+          type inet:ipv4-address;
+          description
+           "Public IPv4 address managed by the lwAFTR.";
+        }
+
+        leaf end-addr {
+          type inet:ipv4-address;
+          description
+           "If present, this PSID map entry applies to all addresses
+            between 'addr' and this address, inclusive.";
+        }
+
+        leaf psid-length {
+          type uint8 { range 0..16; }
+          mandatory true;
+          description
+           "The number of bits devoted to the PSID in the port map.
+            If the psid-length is N, then the IPv4 address will be
+            shared 2^N ways.  Note that psid-length, shift, and
+            reserved-ports-bit-count must add up to 16.";
+        }
+
+        leaf shift {
+          type uint8 { range 0..16; }
+          description
+           "Given an incoming port, one can obtain the PSID by
+            shifting the port right by 'shift' bits and then masking
+            off the lowest 'psid-length' bits.  Defaults to 16 -
+            psid-length.  Note that psid-length, shift, and
+            reserved-ports-bit-count must add up to 16.";
+        }
+
+        leaf reserved-ports-bit-count {
+          type uint8 { range 0..16; }
+          default 0;
+          description
+           "Reserve the lowest 2^N ports so that they map to no
+            softwire.  This can be useful to prevent the low 1024
+            ports (for example) from being mapped to customers.  Note
+            that psid-length and shift must add up to less than or
+            equal to 16.";
+        }
       }
 
-      leaf end-addr {
-        type inet:ipv4-address;
-        description
-         "If present, this PSID map entry applies to all addresses
-          between 'addr' and this address, inclusive.";
-      }
-
-      leaf psid-length {
-        type uint8 { range 0..16; }
-        mandatory true;
-        description
-         "The number of bits devoted to the PSID in the port map.
-          If the psid-length is N, then the IPv4 address will be
-          shared 2^N ways.  Note that psid-length, shift, and
-          reserved-ports-bit-count must add up to 16.";
-      }
-
-      leaf shift {
-        type uint8 { range 0..16; }
-        description
-         "Given an incoming port, one can obtain the PSID by
-          shifting the port right by 'shift' bits and then masking
-          off the lowest 'psid-length' bits.  Defaults to 16 -
-          psid-length.  Note that psid-length, shift, and
-          reserved-ports-bit-count must add up to 16.";
-      }
-
-      leaf reserved-ports-bit-count {
-        type uint8 { range 0..16; }
-        default 0;
-        description
-         "Reserve the lowest 2^N ports so that they map to no
-          softwire.  This can be useful to prevent the low 1024
-          ports (for example) from being mapped to customers.  Note
-          that psid-length and shift must add up to less than or
-          equal to 16.";
-      }
-    }
-
-    leaf-list br-address {
-      type inet:ipv6-address;
-      description
-       "B4-facing address of an lwAFTR.";
-    }
-
-    list softwire {
-      key "ipv4 psid padding";
-
-      leaf ipv4 {
-        type inet:ipv4-address;
-        mandatory true;
-        description
-         "Public IPv4 address of the softwire.";
-      }
-
-      leaf psid {
-        type uint16;
-        mandatory true;
-        description
-         "Port set ID.";
-      }
-
-      leaf padding {
-        type uint16 { range 0..0; }
-        default 0;
-        description
-         "Reserved bytes.";
-      }
-
-      leaf br {
-        type uint32;
-        default 0;
-        description
-         "The B4-facing address of the lwAFTR for this softwire, as
-          a zero-based index into br-addresses.";
-      }
-
-      leaf b4-ipv6 {
+      leaf-list br-address {
         type inet:ipv6-address;
-        mandatory true;
         description
-         "B4 address.";
+         "B4-facing address of an lwAFTR.";
+      }
+
+      list softwire {
+        key "ipv4 psid padding";
+
+        leaf ipv4 {
+          type inet:ipv4-address;
+          description
+           "Public IPv4 address of the softwire.";
+        }
+
+        leaf psid {
+          type uint16;
+          description
+           "Port set ID.";
+        }
+
+        leaf padding {
+          type uint16 { range 0..0; }
+          default 0;
+          description
+           "Reserved bytes.";
+        }
+
+        leaf br {
+          type uint32;
+          default 1;
+          description
+           "The B4-facing address of the lwAFTR for this softwire, as
+            a one-based index into br-addresses.";
+        }
+
+        leaf b4-ipv6 {
+          type inet:ipv6-address;
+          mandatory true;
+          description
+           "B4 address.";
+        }
       }
     }
   }
-  
+
   container softwire-state {
     description "State data about lwaftr.";
-    presence true;
     config false;
-    
-    /* Decapsulation B4 queue */
-    leaf in-ipv6-packets {
-      type yang:zero-based-counter64;
-      description "All valid outgoing IPv4 packets.";
-    }
-
-    leaf drop-misplaced-not-ipv6-bytes {
-      type yang:zero-based-counter64;
-      description "Non-IPv6 packets incoming on IPv6 link.";
-    }
-
-    leaf drop-unknown-protocol-ipv6-bytes {
-      type yang:zero-based-counter64;
-      description "Packets with an unknown IPv6 protocol.";
-    }
-
-    leaf drop-in-by-policy-icmpv6-bytes {
-      type yang:zero-based-counter64;
-      description "Incoming ICMPv6 packets dropped because of current policy.";
-    }
-
-    leaf out-icmpv4-packets {
-      type yang:zero-based-counter64;
-      description "Internally generated ICMPv4 packets.";
-    }
-
-    leaf drop-too-big-type-but-not-code-icmpv6-bytes {
-      type yang:zero-based-counter64;
-      description 
-        "Packet's ICMP type was 'Packet too big' but its ICMP code was not an
-         acceptable one for this type.";
-    }
-
-    leaf drop-over-time-but-not-hop-limit-icmpv6-bytes {
-      type yang:zero-based-counter64;
-      description 
-        "Packet's time limit was exceeded, but the hop limit was not.";
-    }
-
-    /* Decapsulation internet queue */
-    leaf drop-no-source-softwire-ipv6-bytes {
-      type yang:zero-based-counter64;
-      description 
-        "No matching source softwire in the binding table; incremented whether
-         or not the reason was RFC7596.";
-    }
-
-    leaf out-ipv4-packets {
-      type yang:zero-based-counter64;
-      description "Valid outgoing IPv4 packets.";
-    }
-
-    leaf hairpin-ipv4-packets {
-      type yang:zero-based-counter64;
-      description "IPv4 packets going to a known b4 (hairpinned).";
-    }
-
-    leaf drop-out-by-policy-icmpv6-bytes {
-      type yang:zero-based-counter64;
-      description
-        "Internally generated ICMPv6 packets dropped because of current
-         policy.";
-    }
-
-    leaf drop-over-rate-limit-icmpv6-bytes {
-      type yang:zero-based-counter64;
-      description 
-        "Packets dropped because the outgoing ICMPv6 rate limit was reached.";
-    }
-
-    leaf out-icmpv6-packets {
-      type yang:zero-based-counter64;
-      description "Internally generted ICMPv6 error packets.";
-    }
-
-    /* Encapsulation internet queue */
-    leaf in-ipv4-packets {
-      type yang:zero-based-counter64;
-      description "All valid outgoing IPv4 packets.";
-    }
-
-    leaf drop-in-by-policy-icmpv4-bytes {
-      type yang:zero-based-counter64;
-      description "Incoming ICMPv4 packets dropped because of current policy.";
-    }
-
-    leaf drop-misplaced-not-ipv4-bytes {
-      type yang:zero-based-counter64;
-      description "Non-IPv4 packets incoming on the IPv4 link.";
-    }
-
-    leaf drop-bad-checksum-icmpv4-bytes {
-      type yang:zero-based-counter64;
-      description "ICMPv4 packets dropped because of a bad checksum.";
-    }
 
     leaf drop-all-ipv4-iface-bytes {
       type yang:zero-based-counter64;
-      description 
+      description
         "All dropped packets and bytes that came in over IPv4 interfaces,
          whether or not they actually IPv4 (they only include data about
          packets that go in/out over the wires, excluding internally generated
          ICMP packets).";
     }
-    
+    leaf drop-all-ipv4-iface-packets {
+      type yang:zero-based-counter64;
+      description
+        "All dropped packets and bytes that came in over IPv4 interfaces,
+         whether or not they actually IPv4 (they only include data about
+         packets that go in/out over the wires, excluding internally generated
+         ICMP packets).";
+    }
     leaf drop-all-ipv6-iface-bytes {
       type yang:zero-based-counter64;
-      description 
+      description
         "All dropped packets and bytes that came in over IPv6 interfaces,
          whether or not they actually IPv6 (they only include data about packets
          that go in/out over the wires, excluding internally generated ICMP
          packets).";
     }
-
-    /* Encapsulation B4 queue */
-    leaf out-ipv6-packets {
+    leaf drop-all-ipv6-iface-packets {
       type yang:zero-based-counter64;
-      description "All valid outgoing IPv6 packets.";
+      description
+        "All dropped packets and bytes that came in over IPv6 interfaces,
+         whether or not they actually IPv6 (they only include data about packets
+         that go in/out over the wires, excluding internally generated ICMP
+         packets).";
     }
-
-    leaf drop-over-mtu-but-dont-fragment-ipv4-bytes {
+    leaf drop-bad-checksum-icmpv4-bytes {
       type yang:zero-based-counter64;
-      description 
-        "IPv4 packets whose size exceeded the MTU, but the DF (Don't Fragment)
-         flag was set.";
+      description "ICMPv4 packets dropped because of a bad checksum.";
     }
-
-    leaf drop-ttl-zero-ipv4-bytes {
+    leaf drop-bad-checksum-icmpv4-packets {
       type yang:zero-based-counter64;
-      description "IPv4 packets dropped because their TTL was zero.";
+      description "ICMPv4 packets dropped because of a bad checksum.";
     }
-
-    leaf drop-out-by-policy-icmpv4-bytes {
+    leaf drop-in-by-policy-icmpv4-bytes {
       type yang:zero-based-counter64;
-      description 
-        "Internally generated ICMPv4 error packets dropped because of current
-         policy.";
+      description "Incoming ICMPv4 packets dropped because of current policy.";
     }
-
-    leaf drop-no-dest-softwire-ipv4-bytes {
+    leaf drop-in-by-policy-icmpv4-packets {
       type yang:zero-based-counter64;
-      description 
-        "No matching destination softwire in the binding table; incremented
-         whether or not the reason was RFC7596.";
+      description "Incoming ICMPv4 packets dropped because of current policy.";
     }
-
+    leaf drop-in-by-policy-icmpv6-bytes {
+      type yang:zero-based-counter64;
+      description "Incoming ICMPv6 packets dropped because of current policy.";
+    }
+    leaf drop-in-by-policy-icmpv6-packets {
+      type yang:zero-based-counter64;
+      description "Incoming ICMPv6 packets dropped because of current policy.";
+    }
     leaf drop-in-by-rfc7596-icmpv4-bytes {
       type yang:zero-based-counter64;
-      description 
+      description
         "Incoming ICMPv4 packets with no destination (RFC 7596 section 8.1).";
     }
-
-    /* Fragmentation counters IPv4 */
+    leaf drop-in-by-rfc7596-icmpv4-packets {
+      type yang:zero-based-counter64;
+      description
+        "Incoming ICMPv4 packets with no destination (RFC 7596 section 8.1).";
+    }
     leaf drop-ipv4-frag-disabled {
       type yang:zero-based-counter64;
-      description 
+      description
         "If fragmentation is disabled, the only potentially non-zero IPv4
          fragmentation counter is drop-ipv4-frag-disabled. If fragmentation is
          enabled, it will always be zero.";
     }
-
-    leaf in-ipv4-frag-needs-reassembly {
-      type yang:zero-based-counter64;
-      description "An IPv4 fragment was received.";
-    }
-
-    leaf in-ipv4-frag-reassembled {
-      type yang:zero-based-counter64;
-      description "A packet was successfully reassembled from IPv4 fragments.";
-    }
-
-    leaf in-ipv4-frag-reassembly-unneeded {
-      type yang:zero-based-counter64;
-      description 
-        "An IPv4 packet which was not a fragment was received - consequently,
-         it did not need to be reassembled. This should be the usual case.";
-    }
-
     leaf drop-ipv4-frag-invalid-reassembly {
       type yang:zero-based-counter64;
-      description 
+      description
         "Two or more IPv4 fragments were received, and reassembly was started,
          but was invalid and dropped. Causes include multiple fragments claiming
          they are the last fragment, overlapping fragment offsets, or the packet
@@ -573,67 +467,24 @@ module snabb-softwire-v1 {
          max_fragments_per_reassembly_packet, and the default is that no packet
          should be reassembled from more than 40).";
     }
-
     leaf drop-ipv4-frag-random-evicted {
       type yang:zero-based-counter64;
-      description 
+      description
         "Reassembling an IPv4 packet from fragments was in progress, but the
          configured amount of packets to reassemble at once was exceeded, so one
          was dropped at random. Consider increasing the setting
          max_ipv4_reassembly_packets.";
     }
-
-    leaf out-ipv4-frag {
-      type yang:zero-based-counter64;
-      description 
-        "An outgoing packet exceeded the configured IPv4 MTU, so needed to be
-         fragmented. This may happen, but should be unusual.";
-    }
-
-    leaf out-ipv4-frag-not {
-      type yang:zero-based-counter64;
-      description 
-        "An outgoing packet was small enough to pass through unfragmented - this
-         should be the usual case.";
-    }
-
-    leaf memuse-ipv4-frag-reassembly-buffer {
-      type yang:zero-based-counter64;
-      description 
-        "The amount of memory being used by the statically sized data structure
-         for reassembling IPv4 fragments. This is directly proportional to the
-        setting max_ipv4_reassembly_packets.";
-    }
-
-    /* Fragmentation counters IPv6 */
     leaf drop-ipv6-frag-disabled {
       type yang:zero-based-counter64;
-      description 
+      description
         "If fragmentation is disabled, the only potentially non-zero IPv6
          fragmentation counter is drop-ipv6-frag-disabled. If fragmentation is
          enabled, it will always be zero.";
     }
-
-    leaf in-ipv6-frag-needs-reassembly {
-      type yang:zero-based-counter64;
-      description "An IPv6 fragment was received.";
-    }
-
-    leaf in-ipv6-frag-reassembled {
-      type yang:zero-based-counter64;
-      description "A packet was successfully reassembled from IPv6 fragments.";
-    }
-
-    leaf in-ipv6-frag-reassembly-unneeded {
-      type yang:zero-based-counter64;
-      description 
-        "An IPv6 packet which was not a fragment was received - consequently, it
-         did not need to be reassembled. This should be the usual case.";
-    }
-
     leaf drop-ipv6-frag-invalid-reassembly {
       type yang:zero-based-counter64;
-      description 
+      description
         "Two or more IPv6 fragments were received, and reassembly was started,
          but was invalid and dropped. Causes include multiple fragments claiming
          they are the last fragment, overlapping fragment offsets, or the packet
@@ -641,36 +492,259 @@ module snabb-softwire-v1 {
          max_fragments_per_reassembly_packet, and the default is that no packet
          should be reassembled from more than 40).";
     }
-
     leaf drop-ipv6-frag-random-evicted {
       type yang:zero-based-counter64;
-      description 
+      description
         "Reassembling an IPv6 packet from fragments was in progress, but the
         configured amount of packets to reassemble at once was exceeded, so one
         was dropped at random. Consider increasing the setting
         max_ipv6_reassembly_packets.";
     }
-
-    leaf out-ipv6-frag {
+    leaf drop-misplaced-not-ipv4-bytes {
       type yang:zero-based-counter64;
-      description 
-        "An outgoing packet exceeded the configured IPv6 MTU, so needed to be
-        fragmented. This may happen, but should be unusual.";
+      description "Non-IPv4 packets incoming on the IPv4 link.";
     }
-
-    leaf out-ipv6-frag-not {
+    leaf drop-misplaced-not-ipv4-packets {
       type yang:zero-based-counter64;
-      description 
-        "An outgoing packet was small enough to pass through unfragmented - this
-         should be the usual case.";
+      description "Non-IPv4 packets incoming on the IPv4 link.";
     }
-
+    leaf drop-misplaced-not-ipv6-bytes {
+      type yang:zero-based-counter64;
+      description "Non-IPv6 packets incoming on IPv6 link.";
+    }
+    leaf drop-misplaced-not-ipv6-packets {
+      type yang:zero-based-counter64;
+      description "Non-IPv6 packets incoming on IPv6 link.";
+    }
+    leaf drop-no-dest-softwire-ipv4-bytes {
+      type yang:zero-based-counter64;
+      description
+        "No matching destination softwire in the binding table; incremented
+         whether or not the reason was RFC7596.";
+    }
+    leaf drop-no-dest-softwire-ipv4-packets {
+      type yang:zero-based-counter64;
+      description
+        "No matching destination softwire in the binding table; incremented
+         whether or not the reason was RFC7596.";
+    }
+    leaf drop-no-source-softwire-ipv6-bytes {
+      type yang:zero-based-counter64;
+      description
+        "No matching source softwire in the binding table; incremented whether
+         or not the reason was RFC7596.";
+    }
+    leaf drop-no-source-softwire-ipv6-packets {
+      type yang:zero-based-counter64;
+      description
+        "No matching source softwire in the binding table; incremented whether
+         or not the reason was RFC7596.";
+    }
+    leaf drop-out-by-policy-icmpv4-packets {
+      type yang:zero-based-counter64;
+      description
+        "Internally generated ICMPv4 error packets dropped because of current
+         policy.";
+    }
+    leaf drop-out-by-policy-icmpv6-packets {
+      type yang:zero-based-counter64;
+      description
+        "Internally generated ICMPv6 packets dropped because of current
+         policy.";
+    }
+    leaf drop-over-mtu-but-dont-fragment-ipv4-bytes {
+      type yang:zero-based-counter64;
+      description
+        "IPv4 packets whose size exceeded the MTU, but the DF (Don't Fragment)
+         flag was set.";
+    }
+    leaf drop-over-mtu-but-dont-fragment-ipv4-packets {
+      type yang:zero-based-counter64;
+      description
+        "IPv4 packets whose size exceeded the MTU, but the DF (Don't Fragment)
+         flag was set.";
+    }
+    leaf drop-over-rate-limit-icmpv6-bytes {
+      type yang:zero-based-counter64;
+      description
+        "Packets dropped because the outgoing ICMPv6 rate limit was reached.";
+    }
+    leaf drop-over-rate-limit-icmpv6-packets {
+      type yang:zero-based-counter64;
+      description
+        "Packets dropped because the outgoing ICMPv6 rate limit was reached.";
+    }
+    leaf drop-over-time-but-not-hop-limit-icmpv6-bytes {
+      type yang:zero-based-counter64;
+      description
+        "Packet's time limit was exceeded, but the hop limit was not.";
+    }
+    leaf drop-over-time-but-not-hop-limit-icmpv6-packets {
+      type yang:zero-based-counter64;
+      description
+        "Packet's time limit was exceeded, but the hop limit was not.";
+    }
+    leaf drop-too-big-type-but-not-code-icmpv6-bytes {
+      type yang:zero-based-counter64;
+      description
+        "Packet's ICMP type was 'Packet too big' but its ICMP code was not an
+         acceptable one for this type.";
+    }
+    leaf drop-too-big-type-but-not-code-icmpv6-packets {
+      type yang:zero-based-counter64;
+      description
+        "Packet's ICMP type was 'Packet too big' but its ICMP code was not an
+         acceptable one for this type.";
+    }
+    leaf drop-ttl-zero-ipv4-bytes {
+      type yang:zero-based-counter64;
+      description "IPv4 packets dropped because their TTL was zero.";
+    }
+    leaf drop-ttl-zero-ipv4-packets {
+      type yang:zero-based-counter64;
+      description "IPv4 packets dropped because their TTL was zero.";
+    }
+    leaf drop-unknown-protocol-icmpv6-bytes {
+      type yang:zero-based-counter64;
+      description "Packets with an unknown ICMPv6 protocol.";
+    }
+    leaf drop-unknown-protocol-icmpv6-packets {
+      type yang:zero-based-counter64;
+      description "Packets with an unknown ICMPv6 protocol.";
+    }
+    leaf drop-unknown-protocol-ipv6-bytes {
+      type yang:zero-based-counter64;
+      description "Packets with an unknown IPv6 protocol.";
+    }
+    leaf drop-unknown-protocol-ipv6-packets {
+      type yang:zero-based-counter64;
+      description "Packets with an unknown IPv6 protocol.";
+    }
+    leaf hairpin-ipv4-bytes {
+      type yang:zero-based-counter64;
+      description "IPv4 packets going to a known b4 (hairpinned).";
+    }
+    leaf hairpin-ipv4-packets {
+      type yang:zero-based-counter64;
+      description "IPv4 packets going to a known b4 (hairpinned).";
+    }
+    leaf in-ipv4-bytes {
+      type yang:zero-based-counter64;
+      description "All valid outgoing IPv4 packets.";
+    }
+    leaf in-ipv4-frag-needs-reassembly {
+      type yang:zero-based-counter64;
+      description "An IPv4 fragment was received.";
+    }
+    leaf in-ipv4-frag-reassembled {
+      type yang:zero-based-counter64;
+      description "A packet was successfully reassembled from IPv4 fragments.";
+    }
+    leaf in-ipv4-frag-reassembly-unneeded {
+      type yang:zero-based-counter64;
+      description
+        "An IPv4 packet which was not a fragment was received - consequently,
+         it did not need to be reassembled. This should be the usual case.";
+    }
+    leaf in-ipv4-packets {
+      type yang:zero-based-counter64;
+      description "All valid outgoing IPv4 packets.";
+    }
+    leaf in-ipv6-bytes {
+      type yang:zero-based-counter64;
+      description "All valid outgoing IPv4 packets.";
+    }
+    leaf in-ipv6-frag-needs-reassembly {
+      type yang:zero-based-counter64;
+      description "An IPv6 fragment was received.";
+    }
+    leaf in-ipv6-frag-reassembled {
+      type yang:zero-based-counter64;
+      description "A packet was successfully reassembled from IPv6 fragments.";
+    }
+    leaf in-ipv6-frag-reassembly-unneeded {
+      type yang:zero-based-counter64;
+      description
+        "An IPv6 packet which was not a fragment was received - consequently, it
+         did not need to be reassembled. This should be the usual case.";
+    }
+    leaf in-ipv6-packets {
+      type yang:zero-based-counter64;
+      description "All valid outgoing IPv4 packets.";
+    }
+    leaf ingress-packet-drops {
+      type yang:zero-based-counter64;
+      description "Packets dropped due to ingress filters.";
+    }
+    leaf memuse-ipv4-frag-reassembly-buffer {
+      type yang:zero-based-counter64;
+      description
+        "The amount of memory being used by the statically sized data structure
+         for reassembling IPv4 fragments. This is directly proportional to the
+        setting max_ipv4_reassembly_packets.";
+    }
     leaf memuse-ipv6-frag-reassembly-buffer {
       type yang:zero-based-counter64;
       description
         "The amount of memory being used by the statically sized data structure
          for reassembling IPv6 fragments. This is directly proportional to the
          setting max_ipv6_reassembly_packets.";
+    }
+    leaf out-icmpv4-bytes {
+      type yang:zero-based-counter64;
+      description "Internally generated ICMPv4 packets.";
+    }
+    leaf out-icmpv4-packets {
+      type yang:zero-based-counter64;
+      description "Internally generated ICMPv4 packets.";
+    }
+    leaf out-icmpv6-bytes {
+      type yang:zero-based-counter64;
+      description "Internally generted ICMPv6 error packets.";
+    }
+    leaf out-icmpv6-packets {
+      type yang:zero-based-counter64;
+      description "Internally generted ICMPv6 error packets.";
+    }
+    leaf out-ipv4-bytes {
+      type yang:zero-based-counter64;
+      description "Valid outgoing IPv4 packets.";
+    }
+    leaf out-ipv4-frag {
+      type yang:zero-based-counter64;
+      description
+        "An outgoing packet exceeded the configured IPv4 MTU, so needed to be
+         fragmented. This may happen, but should be unusual.";
+    }
+    leaf out-ipv4-frag-not {
+      type yang:zero-based-counter64;
+      description
+        "An outgoing packet was small enough to pass through unfragmented - this
+         should be the usual case.";
+    }
+    leaf out-ipv4-packets {
+      type yang:zero-based-counter64;
+      description "Valid outgoing IPv4 packets.";
+    }
+    leaf out-ipv6-bytes {
+      type yang:zero-based-counter64;
+      description "All valid outgoing IPv6 packets.";
+    }
+    leaf out-ipv6-frag {
+      type yang:zero-based-counter64;
+      description
+        "An outgoing packet exceeded the configured IPv6 MTU, so needed to be
+        fragmented. This may happen, but should be unusual.";
+    }
+    leaf out-ipv6-frag-not {
+      type yang:zero-based-counter64;
+      description
+        "An outgoing packet was small enough to pass through unfragmented - this
+         should be the usual case.";
+    }
+    leaf out-ipv6-packets {
+      type yang:zero-based-counter64;
+      description "All valid outgoing IPv6 packets.";
     }
   }
 }

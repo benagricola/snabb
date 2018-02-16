@@ -12,15 +12,18 @@ load_schema = schema.load_schema
 load_schema_file = schema.load_schema_file
 load_schema_by_name = schema.load_schema_by_name
 
-load_data_for_schema = data.load_data_for_schema
-load_data_for_schema_by_name = data.load_data_for_schema_by_name
+add_schema = schema.add_schema
+add_schema_file = schema.add_schema_file
 
-print_data_for_schema = data.print_data_for_schema
-print_data_for_schema_by_name = data.print_data_for_schema_by_name
+load_config_for_schema = data.load_config_for_schema
+load_config_for_schema_by_name = data.load_config_for_schema_by_name
+
+print_config_for_schema = data.print_config_for_schema
+print_config_for_schema_by_name = data.print_config_for_schema_by_name
 string_output_file = util.string_output_file
 
-compile_data_for_schema = binary.compile_data_for_schema
-compile_data_for_schema_by_name = binary.compile_data_for_schema_by_name
+compile_config_for_schema = binary.compile_config_for_schema
+compile_config_for_schema_by_name = binary.compile_config_for_schema_by_name
 
 load_compiled_data_file = binary.load_compiled_data_file
 
@@ -63,19 +66,34 @@ function load_configuration(filename, opts)
    local function is_fresh(expected, got)
    end
    local function load_compiled(stream, source_mtime)
-      local compiled = binary.load_compiled_data(stream)
-      if opts.schema_name then
-         expect(opts.schema_name, compiled.schema_name, 'schema name')
+      local ok, result = pcall(binary.load_compiled_data, stream)
+      if not ok then
+         log('failed to load compiled configuration: %s', tostring(result))
+         return
       end
-      if opts.revision_date then
-         expect(opts.revision_date, compiled.revision_date,
-                'schema revision date')
+      local compiled = result
+      if opts.schema_name and opts.schema_name ~= compiled.schema_name then
+         log('expected schema name %s in compiled file, but got %s',
+             opts.schema_name, compiled.schema_name)
+         return
       end
-      if source_mtime == nil or
-         (source_mtime.sec == compiled.source_mtime.sec and
-          source_mtime.nsec == compiled.source_mtime.nsec) then
-         return compiled.data
+      if opts.revision_date and opts.revision_date ~= schema.revision_date then
+         log('expected schema revision date %s in compiled file, but got %s',
+             opts.revision_date, compiled.revision_date)
+         return
       end
+      if source_mtime then
+         if (source_mtime.sec == compiled.source_mtime.sec and
+             source_mtime.nsec == compiled.source_mtime.nsec) then
+            log('compiled configuration is up to date.')
+            return compiled.data
+         end
+         log('compiled configuration is out of date; recompiling.')
+         return
+      end
+      -- No source file.
+      log('loaded compiled configuration with no corresponding source file.')
+      return compiled.data
    end
 
    local source = stream.open_input_byte_stream(filename)
@@ -86,18 +104,14 @@ function load_configuration(filename, opts)
    -- in a well-known place.
    local compiled_filename = filename:gsub("%.conf$", "")..'.o'
    local source_mtime = {sec=source.mtime_sec, nsec=source.mtime_nsec}
+   local use_compiled_cache = not lib.getenv("SNABB_RANDOM_SEED")
    local compiled_stream = maybe(stream.open_input_byte_stream,
                                  compiled_filename)
    if compiled_stream then
-      if binary.has_magic(compiled_stream) then
+      if binary.has_magic(compiled_stream) and use_compiled_cache then
          log('loading compiled configuration from %s', compiled_filename)
          local conf = load_compiled(compiled_stream, source_mtime)
-         if conf then
-            log('compiled configuration %s is up to date.', compiled_filename)
-            return conf
-         end
-         log('compiled configuration %s is out of date; recompiling.',
-             compiled_filename)
+         if conf then return conf end
       end
       compiled_stream:close()
    end
@@ -105,16 +119,20 @@ function load_configuration(filename, opts)
    -- Load and compile it.
    local source_str = source:read_string()
    source:close()
-   log('loading source configuration from %s', filename)
-   local conf = load_data_for_schema_by_name(opts.schema_name, source_str,
-                                             filename)
+   log('loading source configuration')
+   local conf = load_config_for_schema_by_name(opts.schema_name, source_str,
+                                               filename)
 
-   -- Save it, if we can.
-   local success, err = pcall(binary.compile_data_for_schema_by_name,
-                              opts.schema_name, conf, compiled_filename,
-                              source_mtime)
-   if not success then
-      log('error saving compiled configuration %s: %s', compiled_filename, err)
+   if use_compiled_cache then
+      -- Save it, if we can.
+      local success, err = pcall(binary.compile_config_for_schema_by_name,
+                                 opts.schema_name, conf, compiled_filename,
+                                 source_mtime)
+      if success then
+         log('wrote compiled configuration %s', compiled_filename)
+      else
+         log('error saving compiled configuration %s: %s', compiled_filename, err)
+      end
    end
 
    -- Done.

@@ -24,6 +24,7 @@ end
 
 -- Start a named worker to execute the given Lua code (a string).
 function start (name, luacode)
+   shm.mkdir(shm.resolve("group"))
    local pid = S.fork()
    if pid == 0 then
       -- First we perform some initialization functions and then we
@@ -42,14 +43,13 @@ function start (name, luacode)
       S.setenv("SNABB_PROGRAM_LUACODE", luacode, true)
       -- Restart the process with execve().
       -- /proc/$$/exe is a link to the same Snabb executable that we are running
-      local env = {}
-      for key, value in pairs(S.environ()) do
-         table.insert(env, key.."="..value)
-      end
-      S.execve(("/proc/%d/exe"):format(S.getpid()), {}, env)
+      local filename = ("/proc/%d/exe"):format(S.getpid())
+      local argv = { ("[snabb worker '%s' for %d]"):format(name, S.getppid()) }
+      lib.execv(filename, argv)
    else
       -- Parent process
       children[name] = { pid = pid }
+      return pid
    end
 end
 
@@ -69,36 +69,6 @@ function status ()
       }
    end
    return status
-end
-
---------------------------------------------------------------
--- Worker (child) process code
---------------------------------------------------------------
-
--- Initialize the worker by attaching to relevant shared memory
--- objects and entering the main engine loop.
-function init ()
-   local name = assert(lib.getenv("SNABB_WORKER_NAME"))
-   local parent = assert(lib.getenv("SNABB_WORKER_PARENT"))
-   print(("Starting worker %s for parent %d"):format(name, parent))
-
-   -- Create "group" alias to the shared group folder in the parent process
-   shm.alias("group", "/"..parent.."/group")
-
-   -- Run the engine with continuous configuration updates
-   local current_config
-   local child_path = "group/config/..name"
-   local update = function () return current_config ~= counter.read(configs) end
-   while true do
-      if update() then
-         -- note: read counter _before_ config file to avoid a race
-         current_config = counter.read(configs)
-         local c = config.load(shm.path(child_path.."/config"))
-         engine.configure(c)
-      end
-      -- Run until next update
-      engine.main({done = update, no_report = true})
-   end
 end
 
 function selftest ()

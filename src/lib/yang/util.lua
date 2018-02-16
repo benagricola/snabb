@@ -20,23 +20,30 @@ function tointeger(str, what, min, max)
    if str:match('^0x', start) then base, start = 16, start + 2
    elseif str:match('^0', start) then base = 8 end
    str = str:lower()
-   local function check(test)
-      return assert(test, 'invalid numeric value for '..what..': '..str)
+   if start > str:len() then
+      error('invalid numeric value for '..what..': '..str)
    end
-   check(start <= str:len())
    -- FIXME: check that res did not overflow the 64-bit number
    local res = ffi.C.strtoull(str:sub(start), nil, base)
    if is_negative then
       res = ffi.new('int64_t[1]', -1*res)[0]
-      check(res <= 0)
-      if min then check(min <= 0 and min <= res) end
+      if res > 0 then
+         error('invalid numeric value for '..what..': '..str)
+      end
+      if min and not (min <= 0 and min <= res) then
+         error('invalid numeric value for '..what..': '..str)
+      end
    else
       -- Only compare min and res if both are positive, otherwise if min
       -- is a negative int64_t then the comparison will treat it as a
       -- large uint64_t.
-      if min then check(min <= 0 or min <= res) end
+      if min and not (min <= 0 or min <= res) then
+         error('invalid numeric value for '..what..': '..str)
+      end
    end
-   if max then check(res <= max) end
+   if max and res > max then
+      error('invalid numeric value for '..what..': '..str)
+   end
    -- Only return Lua numbers for values within int32 + uint32 range.
    -- The 0 <= res check is needed because res might be a uint64, in
    -- which case comparing to a negative Lua number will cast that Lua
@@ -85,7 +92,63 @@ function string_output_file()
    local out = {}
    function file:write(str) table.insert(out, str) end
    function file:flush(str) return table.concat(out) end
+   function file:clear(str) out = {} end
    return file
+end
+
+function memoize(f, max_occupancy)
+   local cache = {}
+   local occupancy = 0
+   local argc = 0
+   max_occupancy = max_occupancy or 10
+   return function(...)
+      local args = {...}
+      if #args == argc then
+         local walk = cache
+         for i=1,#args do
+            if walk == nil then break end
+            walk = walk[args[i]]
+         end
+         if walk ~= nil then return unpack(walk) end
+      else
+         cache, occupancy, argc = {}, 0, #args
+      end
+      local ret = {f(...)}
+      if occupancy >= max_occupancy then
+         cache = {}
+         occupancy = 0
+      end
+      local walk = cache
+      for i=1,#args-1 do
+         if not walk[args[i]] then walk[args[i]] = {} end
+         walk = walk[args[i]]
+      end
+      walk[args[#args]] = ret
+      occupancy = occupancy + 1
+      return unpack(ret)
+   end
+end
+
+function gmtime ()
+   local now = os.time()
+   local utcdate = os.date("!*t", now)
+   local localdate = os.date("*t", now)
+   localdate.isdst = false
+   local timediff = os.difftime(os.time(utcdate), os.time(localdate))
+   return now + timediff
+end
+
+function format_date_as_iso_8601 (time)
+   time = time or gmtime()
+   return os.date("%Y-%m-%dT%H:%M:%SZ", time)
+end
+
+-- XXX: ISO 8601 can be more complex. We asumme date is the format returned
+-- by 'format_date_as_iso8601'.
+function parse_date_as_iso_8601 (date)
+   assert(type(date) == 'string')
+   local pattern = "(%d%d%d%d)-(%d%d)-(%d%d)T(%d%d):(%d%d):(%d%d)Z"
+   return assert(date:match(pattern))
 end
 
 function selftest()

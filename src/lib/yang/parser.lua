@@ -30,7 +30,7 @@ module(..., package.seeall)
 
 local lib = require('core.lib')
 
-local Parser = {}
+Parser = {}
 function Parser.new(str, filename)
    local ret = {pos=1, str=str, filename=filename, line=1, column=0, line_pos=1}
    ret = setmetatable(ret, {__index = Parser})
@@ -76,10 +76,25 @@ function Parser:next()
    return chr
 end
 
+function Parser:peek_n(n)
+   local end_index = self.pos + n - 1
+   if end_index < #self.str then
+      return self:peek() .. self.str:sub(self.pos, (end_index - 1))
+   end
+   return self:peek() .. self.str:sub(self.pos)
+end
+
 function Parser:check(expected)
    if self:peek() == expected then
       if expected then self:next() end
       return true
+   end
+   return false
+end
+
+function Parser:check_pattern(pattern)
+   if not self:is_eof() then
+      return self:peek():match(pattern)
    end
    return false
 end
@@ -122,8 +137,8 @@ function Parser:skip_whitespace()
       if self:check("*") then
          self:skip_c_comment()
       else
-	 self:consume("/")
-	 self:take_while('[^\n]')
+         self:consume("/")
+         self:take_while('[^\n]')
       end
       self:take_while('%s')
    end
@@ -145,7 +160,6 @@ end
 
 function Parser:parse_qstring(quote)
    local start_column = self.column
-   self:check(quote)
    local terminators = "\n"..quote
    if quote == '"' then terminators = terminators.."\\" end
 
@@ -154,22 +168,21 @@ function Parser:parse_qstring(quote)
       result = result..self:take_while("[^"..terminators.."]")
       if self:check(quote) then break end
       if self:check("\n") then
-	 while self.column < start_column do
-	    if not self:check(" ") and not self:check("\t") then break end
-	 end
-	 result = result.."\n"
-	 if self.column > start_column then
-	    result = result..string.rep(" ", self.column-start_column)
-	 end
+         while self.column < start_column do
+            if not self:check(" ") and not self:check("\t") then break end
+         end
+         result = result.."\n"
+         if self.column > start_column then
+            result = result..string.rep(" ", self.column-start_column)
+         end
       elseif self:check("\\") then
-	 if self:check("n") then result = result.."\n"
-	 elseif self:check("t") then result = result.."\t"
-	 elseif self:check('"') then result = result..'"'
-	 elseif self:check("\\") then result = result.."\\"
-	 else
-	    result = result.."\\"
-	 end
-
+         if self:check("n") then result = result.."\n"
+         elseif self:check("t") then result = result.."\t"
+         elseif self:check('"') then result = result..'"'
+         elseif self:check("\\") then result = result.."\\"
+         else
+            result = result.."\\"
+         end
       end
    end
    self:check(quote)
@@ -178,7 +191,7 @@ function Parser:parse_qstring(quote)
    if not self:check("+") then return result end
    self:skip_whitespace()
 
-   -- Strings can be concaternated together with a +
+   -- Strings can be concatenated together with a +
    if self:check("'") then
       return result..self:parse_qstring("'")
    elseif self:check('"') then
@@ -191,7 +204,19 @@ end
 function Parser:parse_string()
    if self:check("'") then return self:parse_qstring("'")
    elseif self:check('"') then return self:parse_qstring('"')
-   else return self:take_while("[^%s;{}\"'/]") end
+   else
+      local ret = {}
+      repeat
+         table.insert(ret, self:take_while("[^%s;{}\"'/]"))
+         if self:is_eof() then break end
+         if self:peek_n(2) == "/*" then break end
+         if self:peek_n(2) == "//" then break end
+         if self:check("/") then
+            table.insert(ret, "/")
+         end
+      until not self:check_pattern("[^%s;{}\"'/]")
+      return table.concat(ret)
+   end
 end
 
 function Parser:parse_identifier()
@@ -232,7 +257,7 @@ function Parser:parse_statement_list()
    while true do
       self:skip_whitespace()
       if self:is_eof() or self:peek() == "}" then
-	 break
+         break
       end
       table.insert(statements, self:parse_statement())
    end
@@ -250,16 +275,12 @@ function Parser:parse_statement()
       self:error("keyword expected")
    end
    returnval.keyword = keyword
-   if self:check(";") then
-      -- We've ended the statement without an argument.
-      return returnval
-   end
 
    -- Take the identifier
-   self:consume_whitespace()
-   local argument = self:parse_string()
-   if argument ~= "" then returnval.argument = argument end
-   self:skip_whitespace()
+   if self:skip_whitespace() and self:peek() ~= ';' and self:peek() ~= '{' then
+      returnval.argument = self:parse_string()
+      self:skip_whitespace()
+   end
 
    if self:check(";") then
       return returnval
@@ -386,6 +407,7 @@ function selftest()
    test_string('"// foo bar;"', '// foo bar;')
    test_string('"/* foo bar */"', '/* foo bar */')
    test_string([["foo \"bar\""]], 'foo "bar"')
+   test_string("hello//world", "hello")
    test_string(lines("  'foo", "    bar'"), lines("foo", " bar"))
    test_string(lines("  'foo", "  bar'"), lines("foo", "bar"))
    test_string(lines("   'foo", "\tbar'"), lines("foo", "    bar"))
@@ -398,12 +420,17 @@ function selftest()
    test_module("// foo bar;\nleaf port;", {{keyword="leaf", argument="port"}})
    test_module("type/** hellooo */string;", {{keyword="type", argument="string"}})
    test_module('type "hello\\pq";', {{keyword="type", argument="hello\\pq"}})
+   test_module('description "";', {{keyword="description", argument=""}})
+   test_module('description;', {{keyword="description"}})
+   test_module('description ;', {{keyword="description"}})
    test_module(lines("leaf port {", "type number;", "}"), {{keyword="leaf",
-	argument="port", statements={{keyword="type", argument="number"}}}})
+   argument="port", statements={{keyword="type", argument="number"}}}})
    test_module(lines("leaf port {", "type;", "}"), {{keyword="leaf",
-	argument="port", statements={{keyword="type"}}}})
-
+   argument="port", statements={{keyword="type"}}}})
+   test_module('description hello/world;', {{keyword="description",
+   argument="hello/world"}})
    parse(require('lib.yang.ietf_inet_types_yang'))
    parse(require('lib.yang.ietf_yang_types_yang'))
-   parse(require('lib.yang.ietf_softwire_yang'))
+   parse(require('lib.yang.ietf_softwire_common_yang'))
+   parse(require('lib.yang.ietf_softwire_br_yang'))
 end
