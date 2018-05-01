@@ -34,7 +34,7 @@ test:
     - make test
   artifacts:
     paths:
-      - testlog/*
+      - src/testlog/*
     name: "testlogs-$CI_COMMIT_REF_NAME"
     expire_in: 1 days
     
