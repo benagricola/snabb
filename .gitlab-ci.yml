@@ -32,7 +32,12 @@ test:
     - make -j
     - cd src
     - make test
-
+  artifacts:
+    paths:
+      - testlog/*
+    name: "testlogs-$CI_COMMIT_REF_NAME"
+    expire_in: 1 days
+    
   # Cache luajit build
   cache:
     paths:
