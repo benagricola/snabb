@@ -73,6 +73,7 @@ function parse_command_line(args, opts)
    function handlers.s(arg) ret.schema_name = arg end
    function handlers.r(arg) ret.revision_date = arg end
    function handlers.c(arg) ret.socket = arg end
+   function handlers.v(arg) ret.verbose = true end
    function handlers.f(arg)
       assert(arg == "yang" or arg == "xpath", "Not valid output format")
       ret.format = arg
@@ -80,12 +81,19 @@ function parse_command_line(args, opts)
    handlers['print-default'] = function ()
       ret.print_default = true
    end
-   args = lib.dogetopt(args, handlers, "hs:r:c:f:",
+   args = lib.dogetopt(args, handlers, "vhs:r:c:f:",
                        {help="h", ['schema-name']="s", schema="s",
                         ['revision-date']="r", revision="r", socket="c",
                         ['print-default']=0, format="f"})
+   return ret, args
+end
+
+function parse_and_validate_command_line(args, opts)
+   local ret, args = parse_command_line(args, opts)
+
    if #args == 0 then err() end
    ret.instance_id = table.remove(args, 1)
+
    local descr = call_leader(ret.instance_id, 'describe', {})
    if not ret.schema_name then
       if opts.require_schema then err("missing --schema arg") end

@@ -81,7 +81,7 @@ local function attach_listener(leader, caller, schema_name, revision_date)
 end
 
 function run(args)
-   args = common.parse_command_line(args, { command='listen' })
+   args = common.parse_and_validate_command_line(args, { command='listen' })
    local caller = rpc.prepare_caller('snabb-config-leader-v1')
    local leader = common.open_socket_or_die(args.instance_id)
    attach_listener(leader, caller, args.schema_name, args.revision_date)
