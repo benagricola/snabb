@@ -1,4 +1,4 @@
-image: docker-hub.squiz.net/hosting/snabb:latest
+image: docker-hub.squiz.net/hosting/snabb-docker:latest
 
 stages:
  - build
