@@ -51,11 +51,10 @@ deploy:dev:
   before_script:
     - mkdir -p ~/.ssh
     - chmod 700 ~/.ssh
-    - echo "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+    - echo "$SNABB_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
     - chmod 0600 ~/.ssh/id_rsa
   
   script:
-    - cat ~/.ssh/id_rsa
     - for HOST in $SNABB_HOSTS; do rsync -arvze "ssh -o StrictHostKeychecking=no" src/snabb root@$HOST:/$SNABB_PATH; ssh $HOST systemctl restart snabb; done;
 
   # Remove private key just in case
