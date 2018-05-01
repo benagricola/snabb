@@ -1,0 +1,68 @@
+image: docker-hub.squiz.net/hosting/snabb-docker:latest
+
+stages:
+ - build
+ - test
+ - deploy
+
+build:
+  stage: build
+  tags:
+    - "centos"
+    - "7"
+  script: 
+    - make -j
+  artifacts:
+    paths:
+      - src/snabb
+    name: "release-$CI_COMMIT_REF_NAME"
+    expire_in: 5 days
+  
+  # Cache luajit build
+  cache:
+    paths:
+     - "lib/luajit/**/*.o"
+     
+test:
+  stage: test
+  tags:
+    - "centos"
+    - "7"
+  script:
+    - make -j
+    - cd src
+    - make test
+  artifacts:
+    paths:
+      - src/testlog/*
+    name: "testlogs-$CI_COMMIT_REF_NAME"
+    expire_in: 1 days
+    
+  # Cache luajit build
+  cache:
+    paths:
+     - "lib/luajit/**/*.o"
+
+deploy:dev:
+  stage: deploy
+  environment:
+    name: dev
+  tags:
+    - "centos"
+    - "7"
+  dependencies:
+    - build
+  # Upload private key to runner
+  before_script:
+    - mkdir -p ~/.ssh
+    - chmod 700 ~/.ssh
+    - echo "$SNABB_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+    - chmod 0600 ~/.ssh/id_rsa
+  
+  script:
+    - for HOST in $SNABB_HOSTS; do rsync -arvze "ssh -o StrictHostKeychecking=no" src/snabb root@$HOST:/$SNABB_PATH; ssh $HOST systemctl restart snabb; done;
+
+  # Remove private key just in case
+  after_script:
+    - rm ~/.ssh/id_rsa
+
