@@ -1,5 +1,16 @@
 image: docker-hub.squiz.net/hosting/snabb-docker:latest
 
+# Upload private key to runner
+before_script:
+  - mkdir -p ~/.ssh
+  - chmod 700 ~/.ssh
+  - echo "$SNABB_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
+  - chmod 0600 ~/.ssh/id_rsa
+
+# Remove private key just in case
+after_script:
+  - rm ~/.ssh/id_rsa
+
 stages:
  - build
  - test
@@ -52,20 +63,21 @@ deploy:dev:
     - "7"
   dependencies:
     - build
-  # Upload private key to runner
-  before_script:
-    - mkdir -p ~/.ssh
-    - chmod 700 ~/.ssh
-    - echo "$SNABB_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-    - chmod 0600 ~/.ssh/id_rsa
-  
+
   script:
     # TODO: Move deployment to snabb config repo as we dont want to restart now if the config still needs updating.
     - for HOST in $SNABB_HOSTS; do rsync -arvze "ssh -o StrictHostKeychecking=no" src/snabb root@$HOST:/$SNABB_PATH; ssh $HOST systemctl restart snabb; done;
+
+# Trigger deployment of config 
+config:dev:
+  stage: deploy
+  environment:
+    name: dev
+  tags:
+    - "centos"
+    - "7"
+  dependencies:
+    - build
+  script:
     - "curl -X POST -F token=${SNABB_CONFIG_BUILD_TOKEN} -F ref=${CI_COMMIT_REF_NAME} https://gitlab.squiz.net/api/v4/projects/${SNABB_CONFIG_BUILD_REPO}/trigger/pipeline"
-  # Remove private key just in case
-  after_script:
-    - rm ~/.ssh/id_rsa
-
-
-
+  retry: 2 # Curl back to gitlab can sometimes fail, retry
