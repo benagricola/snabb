@@ -60,9 +60,12 @@ deploy:dev:
     - chmod 0600 ~/.ssh/id_rsa
   
   script:
+    # TODO: Move deployment to snabb config repo as we dont want to restart now if the config still needs updating.
     - for HOST in $SNABB_HOSTS; do rsync -arvze "ssh -o StrictHostKeychecking=no" src/snabb root@$HOST:/$SNABB_PATH; ssh $HOST systemctl restart snabb; done;
-
+    - "curl -X POST -F token=${SNABB_CONFIG_BUILD_TOKEN} -F ref=${CI_COMMIT_REF_NAME} https://gitlab.squiz.net/api/v4/projects/${SNABB_CONFIG_BUILD_REPO}/trigger/pipeline"
   # Remove private key just in case
   after_script:
     - rm ~/.ssh/id_rsa
+
+
 
