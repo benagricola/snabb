@@ -5,7 +5,7 @@ local common = require("program.config.common")
 
 function run(args)
    local opts = { command='get', with_path=true, is_config=true }
-   args = common.parse_and_validate_command_line(args, opts)
+   args = common.parse_command_line(args, opts)
    local response = common.call_leader(
       args.instance_id, 'get-config',
       { schema = args.schema_name, revision = args.revision_date,
