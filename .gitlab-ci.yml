@@ -65,7 +65,6 @@ deploy:dev:
     - build
 
   script:
-    # TODO: Move deployment to snabb config repo as we dont want to restart now if the config still needs updating.
     - for HOST in $SNABB_HOSTS; do rsync -arvze "ssh -o StrictHostKeychecking=no" src/snabb root@$HOST:/$SNABB_PATH; ssh $HOST systemctl restart snabb; done;
 
 # Trigger deployment of config 
