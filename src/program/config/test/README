@@ -1,5 +1,5 @@
 Usage:
-  snabb config test [OPTIONS] [ID] FILE
+  snabb config test [OPTIONS] FILE
 
 Available options:
   -s SCHEMA-NAME-OR-FILE-PATH

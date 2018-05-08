@@ -108,9 +108,9 @@ function parse_command_line(args, opts)
    end
 
    if not pcall(yang.load_schema_by_name, ret.schema_name) then
-      local ok, schema_name = pcall(yang.add_schema_file, ret.schema_name)
-      if ok then
-         ret.schema_name = schema_name
+      local schema_file = S.lstat(ret.schema_name)
+      if S.S_ISREG(schema_file.st_mode) then
+            ret.schema_name = yang.add_schema_file(ret.schema_name)
       else
          if not ret.instance_id then err("no schema loaded and instance id not given") end
          local response = call_leader(
