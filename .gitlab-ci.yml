@@ -1,5 +1,8 @@
 image: docker-hub.squiz.net/hosting/snabb-docker:latest
 
+variables:
+  SSH_CMD: "ssh -o StrictHostKeychecking=no"
+
 # Upload private key to runner
 before_script:
   - mkdir -p ~/.ssh
@@ -65,7 +68,7 @@ deploy:dev:
     - build
 
   script:
-    - for HOST in $SNABB_HOSTS; do rsync -arvze "ssh -o StrictHostKeychecking=no" src/snabb root@$HOST:/$SNABB_PATH; ssh $HOST systemctl restart snabb; done;
+    - for HOST in $SNABB_HOSTS; do rsync -arvze "${SSH_CMD}" src/snabb root@$HOST:/$SNABB_PATH; ${SSH_CMD} $HOST systemctl restart snabb; done;
 
 # Trigger deployment of config 
 config:dev:
