@@ -286,7 +286,7 @@ end
 
 local function range_validator(range, f)
    if not range then return f end
-   local is_in_range = range_predicate(range.value)
+   local is_in_range = range_predicate(range)
    return function(val)
       if is_in_range(val) then return f(val) end
       error('value '..val..' is out of the valid range')
@@ -294,9 +294,9 @@ local function range_validator(range, f)
 end
 local function length_validator(length, f)
    if not length then return f end
-   local is_in_range = range_predicate(length.value)
+   local is_in_range = range_predicate(length)
    return function(val)
-      if is_in_range(string.length(val)) then return f(val) end
+      if is_in_range(string.len(val)) then return f(val) end
       error('length of string '..val..' is out of the valid range')
    end
 end
