@@ -35,21 +35,18 @@ function Route:new(config)
    local o = {
       fib_v4        = lpm.LPM4_dxr:new(),
       fib_v6        = nil,
-      neighbours_v4 = cltable.new({ key_type = ffi.typeof('uint32_t') }),
-      neighbours_v6 = nil,
+      neighbours_v4 = cltable.new({ key_type = ffi.typeof('uint32_t') }), -- Default empty cltable
+      neighbours_v6 = cltable.new({ key_type = ffi.typeof('uint32_t') }), -- Default empty cltable
       sync_timer    = lib.throttle(1),
-      ctr_names = {
+      log_timer     = lib.throttle(1),
+      ctr_names     = {
          'ipv4_rx',
          'ipv6_rx',
          'unkn_rx',
          'ipv4_tx',
          'ipv6_tx',
-         'unkn_ctrl',
-         'ipv4_ctrl',
-         'ipv6_ctrl',
-         'unkn_drop',
-         'ipv4_drop',  
-         'ipv6_drop',
+         'unkn_tx',
+         'drop',
       },
       ctr = {},
       shm = {},
@@ -60,23 +57,29 @@ function Route:new(config)
       }
    }
 
-   -- Create SHM items for locally tracked counters
-   for _, ctr_name in ipairs(o.ctr_names) do
-      o.shm[ctr_name] = {counter, 0}
-      o.ctr[ctr_name] = 0
-   end
-
    local self = setmetatable(o, { __index = Route })
 
-   -- Install config-loaded routes and build LPM
-   for index, route in cltable.pairs(config.routing.family_v4.route) do
-      self:add_v4_route(route)
+   -- Create SHM items for locally tracked counters
+   for _, ctr_name in ipairs(self.ctr_names) do
+      self.shm[ctr_name] = {counter, 0}
+      self.ctr[ctr_name] = 0
    end
 
-   self:build_v4_route()
+   if config.routing.family_v4 then
+      self.neighbours_v4 = config.routing.family_v4.neighbour
 
-   if config.routing.family_v6 ~= nil then
+      -- Install config-loaded routes and build LPM
+      for index, route in cltable.pairs(config.routing.family_v4.route) do
+
+         self:add_v4_route(route)
+      end
+
+      self:build_v4_route()
+   end
+
+   if config.routing.family_v6 then
       print('IPv6 routing currently not supported. All IPv6 traffic will be sent to the control port.')
+      self.neighbours_v6 = config.routing.family_v6.neighbour
    end
 
    return self
@@ -84,7 +87,7 @@ end
 
 -- Note that this does *not* lpm:build()
 function Route:add_v4_route(route)
-   -- Convert integer to wire format
+   -- Convert integer to prefix format
    local addr = y_ipv4_ntop(route.prefix) .. '/' .. route.length
    print('Installing v4 route ' .. addr .. ' with next-hop ' .. tostring(route.next_hop))
    self.fib_v4:add_string(addr, tonumber(route.next_hop))
@@ -115,21 +118,31 @@ end
 
 -- Forward all unknown packets to control interface
 function Route:route_unknown(p)
+   local ctr  = self.ctr
    local ctrl = self.links.control
+
    if not ctrl then
+      ctr['drop'] = ctr['drop'] + 1
       return p_free(p)
    end
+
+   ctr['unkn_tx'] = ctr['unkn_tx'] + 1
 
    return l_transmit(ctrl, p)
 end
 
 function Route:route_v4(p, md)
+   local ctr           = self.ctr
    local routes        = self.fib_v4
    local neighbour_idx = routes:search_bytes(md.l3 + 16)
 
    -- If no route found, send packet to control
    if not neighbour_idx then
       return self:route_unknown(p)
+   end
+
+   if self:log_timer() then
+      print('Neighbour index ' .. tonumber(neighbour_idx))
    end
 
    -- If route found, resolve neighbour
@@ -141,6 +154,7 @@ function Route:route_v4(p, md)
    end
    
    -- If we reach here something didn't work, free the packet!
+   ctr['drop'] = ctr['drop'] + 1
    return p_free(p)
 end
 
@@ -152,7 +166,7 @@ end
 function Route:push ()
    local p
    local md
-   local ctr = self.ctr
+   local ctr   = self.ctr
    local input = self.links.input
 
    local ipv4_rx = 0
@@ -162,6 +176,7 @@ function Route:push ()
    for _, link in ipairs(input) do
       local l = link.link
       local ipackets = l_nreadable(l)
+      local res
       for n = 1, ipackets do
          p = l_receive(l)
 
@@ -218,11 +233,11 @@ function selftest ()
    local v4_routes     = cltable.new({ key_type = ffi.typeof('uint32_t') })
    local v4_neighbours = cltable.new({ key_type = ffi.typeof('uint32_t') })
 
-   table.insert(v4_routes, { prefix = y_ipv4_pton("0.0.0.0"), length=0, neighbour=1 })
-   table.insert(v4_routes, { prefix = y_ipv4_pton("127.0.0.0"), length=8, neighbour=2 })
+   v4_routes[1] = { prefix = y_ipv4_pton("1.0.0.0"), length=1, next_hop=1 }
+   v4_routes[2] = { prefix = y_ipv4_pton("127.0.0.0"), length=1, next_hop=2 }
 
-   table.insert(v4_neighbours, { interface = "swp1", address=y_ipv4_pton("9.9.9.9"), mac=ethernet:pton("0a:12:34:56:78:90") })
-   table.insert(v4_neighbours, { interface = "swp2", address=y_ipv4_pton("10.10.10.10"), mac=ethernet:pton("0a:98:76:54:32:10") })
+   v4_neighbours[1] = { interface = "swp1", address=y_ipv4_pton("9.9.9.9"), mac=ethernet:pton("0a:12:34:56:78:90") }
+   v4_neighbours[2] = { interface = "swp2", address=y_ipv4_pton("10.10.10.10"), mac=ethernet:pton("0a:98:76:54:32:10") }
 
    config.app(graph, "route", Route, {
       interfaces = {},
