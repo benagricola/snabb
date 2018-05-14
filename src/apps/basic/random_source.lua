@@ -10,7 +10,7 @@ local addr_ip6 = ffi.new("uint8_t[16]")
 
 local function random_ip(addr)
    for i = 0, ffi.sizeof(addr)-1 do
-      addr[i] = math.random(50)
+      addr[i] = math.random(255)
    end
    return addr
 end
@@ -64,6 +64,7 @@ function RandomSource:random_packet()
       self.ip:dst(random_ip(addr_ip))
       self.ip:total_length(self.ip:sizeof() + self.udp:sizeof()
                               + payload_size)
+      self.ip:ttl(math.random(100))
       self.dgram:push(self.ip)
       self.eth:type(0x0800)
    else

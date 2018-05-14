@@ -1,5 +1,6 @@
 module(..., package.seeall)
 
+local constants = require('apps.lwaftr.constants')
 local counter   = require('core.counter')
 local lib       = require("core.lib")
 local cltable   = require('lib.cltable')
@@ -7,16 +8,30 @@ local yang_util = require('lib.yang.util')
 local ffi       = require('ffi')
 local ethernet  = require('lib.protocol.ethernet')
 local ipv4      = require("lib.protocol.ipv4")
-local lpm       = require('lib.lpm.lpm4_dxr')
 local metadata  = require('apps.rss.metadata')
 local link      = require('core.link')
 local packet    = require('core.packet')
+
+local ttl_t      = ffi.typeof("uint8_t")
+local ttl_ptr_t  = ffi.typeof("$*", ttl_t)
+local ttl_t_len  = ffi.sizeof(ttl_t)
 
 local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
 
 local md_add, md_get, md_copy = metadata.add, metadata.get, metadata.copy
 local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwritable
 local p_free = packet.free
+
+-- snabb-router-v1.yang
+local ipv4_lpm_enum = {
+   'LPM4_trie',
+   'LPM4_poptrie',
+   'LPM4_248',
+   'LPM4_dxr',
+}
+
+-- snabb-router-v1.yang: UNIMPLEMENTED
+local ipv6_lpm_enum = {}
 
 --- # `Route` app: route traffic to an output port based on longest prefix-match
 
@@ -52,10 +67,11 @@ function Route:new(config)
       ctr = {},
       shm = {},
       links = {
-         input  = {},
-         output = {},
-         control = nil,
-      }
+         input          = {},
+         input_by_name  = {},
+         output         = {},
+         output_by_name = {},
+      },
    }
 
    local self = setmetatable(o, { __index = Route })
@@ -76,14 +92,19 @@ function Route:new(config)
 end
 
 function Route:init_v4()
-   local config = self.config
+   if self.config.routing.family_v4 then
+      local family_v4 = self.config.routing.family_v4
 
-   print("LPM IMP: " .. tostring(config.routing.lpm_implementation))
-   if config.routing.family_v4 then
-      self.neighbours_v4 = config.routing.family_v4.neighbour
+      -- Choose LPM implementation
+      local lpm_config = assert(ipv4_lpm_enum[self.config.routing.lpm_implementation])
+      local lpm_class = require('lib.lpm.'.. lpm_config:lower())[lpm_config]
+
+      self.fib_v4 = lpm_class:new()
+
+      self.neighbours_v4 = family_v4.neighbour
 
       -- Install config-loaded routes and build LPM
-      for index, route in cltable.pairs(config.routing.family_v4.route) do
+      for index, route in cltable.pairs(family_v4.route) do
          self:add_v4_route(route)
       end
 
@@ -104,14 +125,17 @@ end
 function Route:add_v4_route(route)
    -- Convert integer to prefix format
    local addr = y_ipv4_ntop(route.prefix) .. '/' .. route.length
-   print('Installing v4 route ' .. addr .. ' with next-hop ' .. tostring(route.next_hop))
    self.fib_v4:add_string(addr, tonumber(route.next_hop))
+
+   print('Installed v4 route ' .. addr .. ' with next-hop ' .. tostring(route.next_hop))
 end
 
 function Route:remove_v4_route(route)
    -- Convert integer to wire format
    local addr = y_ipv4_ntop(route.prefix) .. '/' .. route.length
    self.fib_v4:remove_string(addr)
+
+   print('Uninstalled v4 route ' .. addr)
 end
 
 function Route:build_v4_route()
@@ -120,6 +144,22 @@ end
 
 function Route:build_v6_route()
    return self.fib_v6:build()
+end
+
+function Route:get_output_by_name(name)
+   local interface_idx = self.links.output_by_name[name]
+   if not interface_idx then
+      return nil
+   end
+   return assert(self.links.output[interface_idx])
+end
+
+function Route:get_input_by_name(name)
+   local interface_idx = self.links.input_by_name[name]
+   if not interface_idx then
+      return nil
+   end
+   return assert(self.links.input[interface_idx])
 end
 
 -- Sync locally stored timers to shared memory
@@ -134,7 +174,7 @@ end
 -- Forward all unknown packets to control interface
 function Route:route_unknown(p)
    local ctr  = self.ctr
-   local ctrl = self.links.control
+   local ctrl = self.output.control
 
    if not ctrl then
       ctr['drop'] = ctr['drop'] + 1
@@ -149,32 +189,88 @@ end
 function Route:route_v4(p, md)
    local ctr           = self.ctr
    local routes        = self.fib_v4
-   local neighbour_idx = routes:search_bytes(md.l3 + 16)
+
+   -- Assume that no 'local' routes are installed
+   -- If this is the case, we might try to forward packets
+   -- which are aimed at a 'local' IP. TODO: Test this!
+   local neighbour_idx = routes:search_bytes(md.l3 + constants.o_ipv4_dst_addr)
 
    -- If no route found, send packet to control
    if not neighbour_idx then
       return self:route_unknown(p)
    end
 
-
-   local addr = ipv4:ntop(md.l3+16)
-   
-   if self:log_timer() then
-      print('Routing ' .. addr .. ' via neighbour ' .. tonumber(neighbour_idx))
-   end
+   local addr = ipv4:ntop(md.l3+constants.o_ipv4_dst_addr)
 
    -- If route found, resolve neighbour
    local neighbour = self.neighbours_v4[neighbour_idx]
    
    -- If no neighbour found, send packet to control
    if not neighbour then
+      if self:log_timer() then
+         print('No neighbour found for index ', neighbour_idx)
+      end
       return self:route_unknown(p)
    end
 
+   local interface = self:get_output_by_name(neighbour.interface)
 
-   -- If we reach here something didn't work, free the packet!
-   ctr['drop'] = ctr['drop'] + 1
-   return p_free(p)
+   -- If no interface found, send packet to control
+   if not interface then
+      if self:log_timer() then
+         print('No interface found for neighbour interface ', neighbour.interface)
+      end
+      return self:route_unknown(p)
+   end
+
+   local data = p.data
+
+   -- At this point we know we need to forward the packet (rather than send to control)
+   -- Validate it:
+   local ttl = tonumber(ffi.cast("uint8_t", md.l3 + constants.o_ipv4_ttl))
+
+   -- Forward packets with 0 TTL to control
+   -- TODO: Maybe fix this to process in-snabb. This is a potential DoS vuln
+   -- A DDoS with the TTL set correctly (i.e. so it is 0 when it hits this node)
+   -- will cause all packets to be sent to Linux! It can be mitigated by rate-limiting
+   -- upstream packets.                                            
+   if ttl < 1 then
+      return self:route_unknown(p)
+   end
+      
+   -- Start routing packet
+   local src_mac = interface.config.mac
+   local dst_mac = neighbour.mac
+   
+   if self:log_timer() then
+      print('Forwarding with src: ', ethernet:ntop(src_mac), ' dst: ', ethernet:ntop(dst_mac), ' on interface', interface.name)
+   end
+
+   local mac_dst_ptr = data + constants.o_ethernet_dst_addr
+   local mac_src_ptr = data + constants.o_ethernet_src_addr
+
+   -- Rewrite SRC / DST MAC Addresses
+   ffi.copy(mac_src_ptr, src_mac, 6)
+   ffi.copy(mac_dst_ptr, dst_mac, 6)
+
+   -- Rewrite TTL field
+   data[md.l3_offset + constants.o_ipv4_ttl] = bit.band(ttl - 1, 0xff)
+
+
+   -- Recalculate checksum based on updated TTL
+   local chksum = ffi.cast("uint16_t", md.l3 + constants.o_ipv4_checksum)
+
+   chksum = chksum + 0x100
+   chksum = bit.band(chksum, 0xffff) + bit.rshift(chksum, 16)
+   chksum = bit.band(chksum, 0xffff) + bit.rshift(chksum, 16)
+
+   data[md.l3_offset + constants.o_ipv4_checksum] = chksum
+
+   local link = interface.link
+
+   ctr['ipv4_tx'] = ctr['ipv4_tx'] + 1
+
+   return l_transmit(link, p)
 end
 
 -- IPv6 routing unimplemented (NO IPv6 LPM yet), route via control plane
@@ -228,17 +324,36 @@ function Route:push ()
    end
 end
 
-function Route:link (l)
+function Route:link ()
+   local interfaces = self.config.interfaces.interface
+
+   -- Parse input links into ipairs-iterable table
+   link_id = 1
    for name, l in pairs(self.input) do
       if type(name) == 'string' then
-         table.insert(self.links.input, { name = name, link = l})
+         self.links.input[link_id] = { 
+            name   = name, 
+            link   = l,
+            config = interfaces[name], 
+         }
+         self.links.input_by_name[name] = link_id
+
+         link_id = link_id + 1
       end
    end
 
-   if self.output['control'] then
-      self.links.control = self.output['control']
-   else
-      print("No control link found, cannot handle non-ip or packets with no discernible route...")    
+   link_id = 1
+   for name, l in pairs(self.output) do
+      if type(name) == 'string' and name ~= 'control' then
+         self.links.output[link_id] = { 
+            name   = name, 
+            link   = l,
+            config = interfaces[name], 
+         }
+         self.links.output_by_name[name] = link_id
+
+         link_id = link_id + 1
+      end
    end
 end
 
@@ -259,10 +374,25 @@ function selftest ()
    v4_neighbours[2] = { interface = "swp2", address=y_ipv4_pton("10.10.10.10"), mac=ethernet:pton("0a:98:76:54:32:10") }
 
    config.app(graph, "route", Route, {
-      interfaces = {},
+      interfaces = {
+         interface = {
+            swp1 = { 
+               mac         = ethernet:pton("09:87:65:43:21:a0"),
+               address     = y_ipv4_pton("9.9.9.8"),
+               mtu         = 9014,
+               passthrough = false,
+            },
+            swp2 = { 
+               mac         = ethernet:pton("01:23:45:67:89:a0"),
+               address     = y_ipv4_pton("10.10.10.9"),
+               mtu         = 9014,
+               passthrough = false,
+            },
+         }
+      },
       hardware = 'test-router',
       routing = {
-         lpm_implementation = 3;
+         lpm_implementation = 4, -- DXR (from ipv4_lpm_enum)
          family_v4 = {
             route     = v4_routes,
             neighbour = v4_neighbours,
@@ -270,8 +400,8 @@ function selftest ()
       }
    })
 
-   config.app(graph, "swp1_in", basic.Source, {})
-   config.app(graph, "swp2_in", basic.Source, {})
+   config.app(graph, "swp1_in", random.RandomSource, { ratio=0.01 })
+   config.app(graph, "swp2_in", random.RandomSource, { ratio=0.01 })
 
    config.app(graph, "swp1_out", basic.Sink)
    config.app(graph, "swp2_out", basic.Sink)
