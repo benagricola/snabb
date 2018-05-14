@@ -46,9 +46,13 @@ function RandomSource:new(conf)
       ip = require("lib.protocol.ipv4"):new({ protocol = 17 }),
       ip6 = require("lib.protocol.ipv6"):new({ next_header = 17 }),
       udp = require("lib.protocol.udp"):new({}),
-      dgram = require("lib.protocol.datagram"):new()
+      dgram = require("lib.protocol.datagram"):new(),
+      p = nil,
    }
-   return setmetatable(o, {__index=RandomSource})
+   local self = setmetatable(o, {__index=RandomSource})
+
+   self.p = self:random_packet()
+   return self
 end
 
 function RandomSource:random_packet()
@@ -90,7 +94,7 @@ end
 function RandomSource:pull ()
    for _, o in ipairs(self.output) do
       for i = 1, engine.pull_npackets do
-         transmit(o, self:random_packet())
+         transmit(o, packet.clone(self.p))
       end
    end
 end

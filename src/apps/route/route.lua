@@ -234,9 +234,10 @@ function Route:route_v4(p, md)
    local dst_mac = neighbour.mac
 
    local data = p.data
-
-   local mac_dst_ptr = data + constants.o_ethernet_dst_addr
+   
    local mac_src_ptr = data + constants.o_ethernet_src_addr
+   local mac_dst_ptr = data + constants.o_ethernet_dst_addr
+
 
    -- Rewrite SRC / DST MAC Addresses
    ffi.copy(mac_src_ptr, src_mac, 6)
@@ -277,7 +278,7 @@ function Route:push ()
    for _, link in ipairs(input) do
       local l = link.link
       local ipackets = l_nreadable(l)
-      local res
+
       for n = 1, ipackets do
          p = l_receive(l)
 
@@ -402,5 +403,5 @@ function selftest ()
    config.link(graph, "route.swp2 -> swp2_out.input")
 
    engine.configure(graph)
-   engine.main({ duration = 5, report = { showlinks = true } })
+   engine.main({ duration = 10, report = { showlinks = true } })
 end
