@@ -6,15 +6,15 @@ local lib       = require("core.lib")
 local cltable   = require('lib.cltable')
 local yang_util = require('lib.yang.util')
 local ffi       = require('ffi')
+local bit       = require('bit')
 local ethernet  = require('lib.protocol.ethernet')
 local ipv4      = require("lib.protocol.ipv4")
 local metadata  = require('apps.rss.metadata')
 local link      = require('core.link')
 local packet    = require('core.packet')
 
-local ttl_t      = ffi.typeof("uint8_t")
-local ttl_ptr_t  = ffi.typeof("$*", ttl_t)
-local ttl_t_len  = ffi.sizeof(ttl_t)
+local ffi_copy, ffi_cast   = ffi.copy, ffi.cast
+local bit_band, bit_rshift = bit.band, bit.rshift
 
 local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
 
@@ -186,13 +186,10 @@ function Route:route_unknown(p)
 end
 
 function Route:route_v4(p, md)
-   local ctr           = self.ctr
-   local routes        = self.fib_v4
-
    -- Assume that no 'local' routes are installed
    -- If this is the case, we might try to forward packets
    -- which are aimed at a 'local' IP. TODO: Test this!
-   local neighbour_idx = routes:search_bytes(md.l3 + constants.o_ipv4_dst_addr)
+   local neighbour_idx = self.fib_v4:search_bytes(md.l3 + constants.o_ipv4_dst_addr)
 
    -- If no route found, send packet to control
    if not neighbour_idx then
@@ -216,9 +213,11 @@ function Route:route_v4(p, md)
       return self:route_unknown(p)
    end
 
+   local data = p.data
+   
    -- At this point we know we need to forward the packet (rather than send to control)
    -- Validate it:
-   local ttl = tonumber(ffi.cast("uint8_t", md.l3 + constants.o_ipv4_ttl))
+   local ttl = data[md.l3_offset + constants.o_ipv4_ttl]
 
    -- Forward packets with 0 TTL to control
    -- TODO: Maybe fix this to process in-snabb. This is a potential DoS vuln
@@ -232,28 +231,25 @@ function Route:route_v4(p, md)
    -- Start routing packet
    local src_mac = interface.config.mac
    local dst_mac = neighbour.mac
-
-   local data = p.data
    
    local mac_src_ptr = data + constants.o_ethernet_src_addr
    local mac_dst_ptr = data + constants.o_ethernet_dst_addr
 
-
    -- Rewrite SRC / DST MAC Addresses
-   ffi.copy(mac_src_ptr, src_mac, 6)
-   ffi.copy(mac_dst_ptr, dst_mac, 6)
+   ffi_copy(mac_src_ptr, src_mac, 6)
+   ffi_copy(mac_dst_ptr, dst_mac, 6)
 
    -- Rewrite TTL field
-   data[md.l3_offset + constants.o_ipv4_ttl] = bit.band(ttl - 1, 0xff)
+   data[md.l3_offset + constants.o_ipv4_ttl] = ttl - 1
 
    -- Recalculate checksum based on updated TTL
-   local chksum = ffi.cast("uint16_t", md.l3 + constants.o_ipv4_checksum)
+   local chksum_ptr = ffi_cast("uint16_t*", md.l3 + constants.o_ipv4_checksum)
 
-   chksum = chksum + 0x100
-   chksum = bit.band(chksum, 0xffff) + bit.rshift(chksum, 16)
-   chksum = bit.band(chksum, 0xffff) + bit.rshift(chksum, 16)
+   chksum_ptr[0] = chksum_ptr[0] + 0x100
+   chksum_ptr[0] = bit_band(chksum_ptr[0], 0xffff) + bit_rshift(chksum_ptr[0], 16)
+   chksum_ptr[0] = bit_band(chksum_ptr[0], 0xffff) + bit_rshift(chksum_ptr[0], 16)
 
-   data[md.l3_offset + constants.o_ipv4_checksum] = chksum
+   local ctr = self.ctr
 
    ctr['ipv4_tx'] = ctr['ipv4_tx'] + 1
 
@@ -277,9 +273,8 @@ function Route:push ()
 
    for _, link in ipairs(input) do
       local l = link.link
-      local ipackets = l_nreadable(l)
 
-      for n = 1, ipackets do
+      for n = 1, l_nreadable(l) do
          p = l_receive(l)
 
          md = md_add(p, false, nil)
