@@ -9,8 +9,8 @@ local addr_ip = ffi.new("uint8_t[4]")
 local addr_ip6 = ffi.new("uint8_t[16]")
 
 local function random_ip(addr)
-   for i = 1, ffi.sizeof(addr) do
-      addr[i] = math.random(255)
+   for i = 0, ffi.sizeof(addr) do
+      addr[i] = math.random(50)
    end
    return addr
 end

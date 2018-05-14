@@ -33,7 +33,8 @@ Route = {
 
 function Route:new(config)
    local o = {
-      fib_v4        = lpm.LPM4_dxr:new(),
+      config        = config,
+      fib_v4        = nil,
       fib_v6        = nil,
       neighbours_v4 = cltable.new({ key_type = ffi.typeof('uint32_t') }), -- Default empty cltable
       neighbours_v6 = cltable.new({ key_type = ffi.typeof('uint32_t') }), -- Default empty cltable
@@ -65,24 +66,38 @@ function Route:new(config)
       self.ctr[ctr_name] = 0
    end
 
+   -- Load V4 config, if specified
+   self:init_v4();
+
+
+   -- Load V6 config, if specified
+   self:init_v6();
+   return self
+end
+
+function Route:init_v4()
+   local config = self.config
+
+   print("LPM IMP: " .. tostring(config.routing.lpm_implementation))
    if config.routing.family_v4 then
       self.neighbours_v4 = config.routing.family_v4.neighbour
 
       -- Install config-loaded routes and build LPM
       for index, route in cltable.pairs(config.routing.family_v4.route) do
-
          self:add_v4_route(route)
       end
 
+      -- Build LPM only after all 
       self:build_v4_route()
    end
+end
 
+function Route:init_v6()
+   local config = self.config
    if config.routing.family_v6 then
       print('IPv6 routing currently not supported. All IPv6 traffic will be sent to the control port.')
       self.neighbours_v6 = config.routing.family_v6.neighbour
    end
-
-   return self
 end
 
 -- Note that this does *not* lpm:build()
@@ -141,8 +156,11 @@ function Route:route_v4(p, md)
       return self:route_unknown(p)
    end
 
+
+   local addr = ipv4:ntop(md.l3+16)
+   
    if self:log_timer() then
-      print('Neighbour index ' .. tonumber(neighbour_idx))
+      print('Routing ' .. addr .. ' via neighbour ' .. tonumber(neighbour_idx))
    end
 
    -- If route found, resolve neighbour
@@ -152,7 +170,8 @@ function Route:route_v4(p, md)
    if not neighbour then
       return self:route_unknown(p)
    end
-   
+
+
    -- If we reach here something didn't work, free the packet!
    ctr['drop'] = ctr['drop'] + 1
    return p_free(p)
@@ -243,6 +262,7 @@ function selftest ()
       interfaces = {},
       hardware = 'test-router',
       routing = {
+         lpm_implementation = 3;
          family_v4 = {
             route     = v4_routes,
             neighbour = v4_neighbours,
@@ -250,8 +270,8 @@ function selftest ()
       }
    })
 
-   config.app(graph, "swp1_in", random.RandomSource, { ratio = 0.01 })
-   config.app(graph, "swp2_in", random.RandomSource, { ratio = 0.01 })
+   config.app(graph, "swp1_in", basic.Source, {})
+   config.app(graph, "swp2_in", basic.Source, {})
 
    config.app(graph, "swp1_out", basic.Sink)
    config.app(graph, "swp2_out", basic.Sink)
