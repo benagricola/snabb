@@ -85,7 +85,6 @@ function Route:new(config)
    -- Load V4 config, if specified
    self:init_v4();
 
-
    -- Load V6 config, if specified
    self:init_v6();
    return self
@@ -207,9 +206,6 @@ function Route:route_v4(p, md)
    
    -- If no neighbour found, send packet to control
    if not neighbour then
-      if self:log_timer() then
-         print('No neighbour found for index ', neighbour_idx)
-      end
       return self:route_unknown(p)
    end
 
@@ -217,13 +213,8 @@ function Route:route_v4(p, md)
 
    -- If no interface found, send packet to control
    if not interface then
-      if self:log_timer() then
-         print('No interface found for neighbour interface ', neighbour.interface)
-      end
       return self:route_unknown(p)
    end
-
-   local data = p.data
 
    -- At this point we know we need to forward the packet (rather than send to control)
    -- Validate it:
@@ -241,10 +232,8 @@ function Route:route_v4(p, md)
    -- Start routing packet
    local src_mac = interface.config.mac
    local dst_mac = neighbour.mac
-   
-   if self:log_timer() then
-      print('Forwarding with src: ', ethernet:ntop(src_mac), ' dst: ', ethernet:ntop(dst_mac), ' on interface', interface.name)
-   end
+
+   local data = p.data
 
    local mac_dst_ptr = data + constants.o_ethernet_dst_addr
    local mac_src_ptr = data + constants.o_ethernet_src_addr
@@ -256,7 +245,6 @@ function Route:route_v4(p, md)
    -- Rewrite TTL field
    data[md.l3_offset + constants.o_ipv4_ttl] = bit.band(ttl - 1, 0xff)
 
-
    -- Recalculate checksum based on updated TTL
    local chksum = ffi.cast("uint16_t", md.l3 + constants.o_ipv4_checksum)
 
@@ -266,11 +254,9 @@ function Route:route_v4(p, md)
 
    data[md.l3_offset + constants.o_ipv4_checksum] = chksum
 
-   local link = interface.link
-
    ctr['ipv4_tx'] = ctr['ipv4_tx'] + 1
 
-   return l_transmit(link, p)
+   return l_transmit(interface.link, p)
 end
 
 -- IPv6 routing unimplemented (NO IPv6 LPM yet), route via control plane
