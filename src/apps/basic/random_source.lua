@@ -35,7 +35,8 @@ local ext_hdr = ffi.new([[
 
 RandomSource = {
    config = {
-      ratio = 0.5 -- 50/50 IPv6 to IPv4
+      ratio  = 0.5, -- 50/50 IPv6 to IPv4
+      unique = 10,  -- Generate 10 different packets and loop 
    }
 }
 
@@ -47,11 +48,14 @@ function RandomSource:new(conf)
       ip6 = require("lib.protocol.ipv6"):new({ next_header = 17 }),
       udp = require("lib.protocol.udp"):new({}),
       dgram = require("lib.protocol.datagram"):new(),
-      p = nil,
+      unique = conf.unique,
+      p = {},
    }
    local self = setmetatable(o, {__index=RandomSource})
 
-   self.p = self:random_packet()
+   for i = 0, (o.unique - 1) do
+      self.p[i] = self:random_packet()
+   end
    return self
 end
 
@@ -92,9 +96,12 @@ function RandomSource:random_packet()
 end
 
 function RandomSource:pull ()
+   local p
+   local unique = self.unique
    for _, o in ipairs(self.output) do
       for i = 1, engine.pull_npackets do
-         transmit(o, packet.clone(self.p))
+         p = self.p[i%unique]
+         transmit(o, packet.clone(p))
       end
    end
 end
