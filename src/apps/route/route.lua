@@ -99,7 +99,7 @@ function Route:init_v4()
       local family_v4 = self.config.routing.family_v4
 
       -- Choose LPM implementation
-      local lpm_config = assert(ipv4_lpm_enum[self.config.routing.lpm_implementation])
+      local lpm_config = assert(ipv4_lpm_enum[family_v4.lpm_implementation])
       local lpm_class = require('lib.lpm.'.. lpm_config:lower())[lpm_config]
 
       self.fib_v4 = lpm_class:new()
@@ -364,8 +364,8 @@ function selftest ()
       },
       hardware = 'test-router',
       routing = {
-         lpm_implementation = 3, -- DXR (from ipv4_lpm_enum)
          family_v4 = {
+            lpm_implementation = 3, -- = 248
             route     = v4_routes,
             neighbour = v4_neighbours,
          }
