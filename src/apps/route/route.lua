@@ -98,6 +98,8 @@ function Route:init_v4()
    if self.config.routing.family_v4 then
       local family_v4 = self.config.routing.family_v4
 
+      print('LPM Implementation: ' .. family_v4.lpm_implementation)
+      
       -- Choose LPM implementation
       local lpm_config = assert(ipv4_lpm_enum[family_v4.lpm_implementation])
       local lpm_class = require('lib.lpm.'.. lpm_config:lower())[lpm_config]
