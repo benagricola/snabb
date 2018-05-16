@@ -61,7 +61,7 @@ end
 
 function RandomSource:random_packet()
    local p = packet.allocate()
-   local payload_size = math.random(9000)
+   local payload_size = math.random(500)
    p.length = payload_size
    self.dgram:new(p)
    self.udp:src_port(math.random(2^16-1))

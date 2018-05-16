@@ -336,10 +336,11 @@ function selftest ()
    local v4_neighbours = cltable.new({ key_type = ffi.typeof('uint32_t') })
 
    for i = 1, 254 do
-      local next_hop = (i%2) + 1
-      v4_routes[i] = { prefix = y_ipv4_pton(i .. ".0.0.0"), length=8, next_hop=next_hop }
+      for j = 1, 254 do
+         local next_hop = (j%2) + 1
+         v4_routes[i*j] = { prefix = y_ipv4_pton(i .. "." .. j .. ".0.0"), length=16, next_hop=next_hop }
+      end
    end
-
 
    v4_neighbours[1] = { interface = "swp1", address=y_ipv4_pton("9.9.9.9"), mac=ethernet:pton("0a:12:34:56:78:90") }
    v4_neighbours[2] = { interface = "swp2", address=y_ipv4_pton("10.10.10.10"), mac=ethernet:pton("0a:98:76:54:32:10") }
@@ -371,8 +372,8 @@ function selftest ()
       }
    })
 
-   config.app(graph, "swp1_in", random.RandomSource, { ratio=0.01, unique=100 })
-   config.app(graph, "swp2_in", random.RandomSource, { ratio=0.01, unique=100 })
+   config.app(graph, "swp1_in", random.RandomSource, { ratio=0, unique=1000 })
+   config.app(graph, "swp2_in", random.RandomSource, { ratio=0, unique=1000 })
 
    config.app(graph, "swp1_out", basic.Sink)
    config.app(graph, "swp2_out", basic.Sink)

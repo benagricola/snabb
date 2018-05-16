@@ -8,6 +8,7 @@ package.path = ''
 
 local STP = require("lib.lua.StackTracePlus")
 local ffi = require("ffi")
+local vmprofile = require("jit.vmprofile")
 local lib = require("core.lib")
 local shm = require("core.shm")
 local C   = ffi.C
@@ -62,7 +63,10 @@ function main ()
          print("unsupported program: "..program:gsub("_", "-"))
          usage(1)
       else
+         _G.engine.setvmprofile('program')
+         vmprofile.start()
          require(modulename(program)).run(args)
+         vmprofile.stop()
       end
    end
 end
