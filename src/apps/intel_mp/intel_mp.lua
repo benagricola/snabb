@@ -310,8 +310,8 @@ byPciID = {
   [0x1521] = { registers = "i350", driver = Intel1g, max_q = 8 },
   [0x1533] = { registers = "i210", driver = Intel1g, max_q = 4 },
   [0x157b] = { registers = "i210", driver = Intel1g, max_q = 4 },
-  [0x10fb] = { registers = "82599ES", driver = Intel82599, max_q = 16 },
-  [0x154d] = { registers = "82599ES", driver = Intel82599, max_q = 16 }
+  [0x10fb] = { registers = "82599ES", driver = Intel82599, max_q = 16 }, -- IXGBE_DEV_ID_82599_SFP
+  [0x154d] = { registers = "82599ES", driver = Intel82599, max_q = 16 }  -- IXGBE_DEV_ID_82599_SFP_SF2
 }
 
 -- The `driver' variable is used as a reference to the driver class in
