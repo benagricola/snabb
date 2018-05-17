@@ -7,6 +7,7 @@ local cltable   = require('lib.cltable')
 local yang_util = require('lib.yang.util')
 local ffi       = require('ffi')
 local bit       = require('bit')
+local lpm_ip4   = require('lib.lpm.ip4')
 local ethernet  = require('lib.protocol.ethernet')
 local ipv4      = require("lib.protocol.ipv4")
 local link      = require('core.link')
@@ -55,7 +56,7 @@ function Route:new(config)
       sync_timer           = lib.throttle(1),
       v4_build_timer       = lib.throttle(1),
       v6_build_timer       = lib.throttle(1),
-      log_timer            = lib.throttle(1),
+      log_timer            = lib.throttle(0.1),
       ctr_names            = {
          'ipv4_rx',
          'ipv6_rx',
@@ -99,7 +100,6 @@ function Route:init_v4()
       self.fib_v4 = lpm_class:new()
 
       for key, neighbour in cltable.pairs(family_v4.neighbour) do
-         print('Adding neighbour with indexs ' .. key.index .. ' with address ' .. neighbour.address)
          self.neighbours_v4[key.index] = neighbour
       end
 
@@ -127,7 +127,7 @@ function Route:add_v4_route(route)
    local addr = y_ipv4_ntop(route.prefix) .. '/' .. route.length
    self.fib_v4:add_string(addr, route.next_hop)
 
-   print('Installed v4 route ' .. addr .. ' with next-hop ' .. tostring(route.next_hop))
+   print('Installed v4 route ' .. addr .. ' with next-hop ' .. route.next_hop)
 end
 
 function Route:remove_v4_route(route)
@@ -135,7 +135,7 @@ function Route:remove_v4_route(route)
    local addr = y_ipv4_ntop(route.prefix) .. '/' .. route.length
    self.fib_v4:remove_string(addr)
 
-   print('Uninstalled v4 route ' .. addr)
+   --print('Uninstalled v4 route ' .. addr)
 end
 
 function Route:build_v4_route()
@@ -200,10 +200,12 @@ function Route:route_v4(p, data)
    -- Assume that no 'local' routes are installed
    -- If this is the case, we might try to forward packets
    -- which are aimed at a 'local' IP. TODO: Test this!
+   --local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
+
    local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
    -- If no route found, send packet to control
-   if not neighbour_idx or neighbour_idx == 0 then
+   if not neighbour_idx then
       return self:route_unknown(p)
    end
 
