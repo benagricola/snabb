@@ -99,6 +99,9 @@ function Route:init_v4()
 
       self.fib_v4 = lpm_class:new()
 
+      -- Add default next hop with index 0 (required! do not remove)
+      self.fib_v4:add_string('0.0.0.0/0', 0)
+
       for key, neighbour in cltable.pairs(family_v4.neighbour) do
          self.neighbours_v4[key.index] = neighbour
       end
@@ -205,7 +208,7 @@ function Route:route_v4(p, data)
    local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
    -- If no route found, send packet to control
-   if not neighbour_idx then
+   if not neighbour_idx or neighbour_idx == 0 then
       return self:route_unknown(p)
    end
 
