@@ -6,7 +6,7 @@ PREFIX = /usr/local
 
 LUAJIT_CFLAGS := -include $(CURDIR)/gcc-preinclude.h
 
-all: $(LUAJIT) $(SYSCALL) $(PFLUA)
+deps: $(LUAJIT) $(SYSCALL) $(PFLUA)
 #       LuaJIT
 	@(cd lib/luajit && (cd src && $(MAKE) reusevm) && $(MAKE))
 #       ljsyscall
@@ -20,9 +20,11 @@ all: $(LUAJIT) $(SYSCALL) $(PFLUA)
 	@mkdir -p src/ndpi
 	@cp -p lib/ljndpi/ndpi.lua src/
 	@cp -p lib/ljndpi/ndpi/*.lua src/ndpi/
+
+all: deps
 	cd src && $(MAKE)
 
-install: all
+install: all 
 	install -D src/snabb ${DESTDIR}${PREFIX}/bin/snabb
 
 clean:

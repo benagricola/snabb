@@ -1,9 +1,8 @@
-FROM alpine:3.7 AS build
-RUN apk add --no-cache libgcc alpine-sdk gcc libpcap-dev linux-headers findutils
+FROM raptorjit AS build
 COPY . /snabb
-RUN cd /snabb && make clean && make -j && cd src && make -j
+RUN cd snabb/src && make -j
 
-FROM alpine:3.7
+FROM raptorjit
 RUN apk add --no-cache libgcc
 COPY --from=build /snabb/src/snabb /usr/local/bin/
 

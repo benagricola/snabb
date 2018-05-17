@@ -5,7 +5,7 @@ module(...,package.seeall)
 local shm = require("core.shm")
 local interlink = require("lib.interlink")
 
-local Transmitter = {name="apps.interlink.Transmitter"}
+Transmitter = {name="apps.interlink.Transmitter"}
 
 function Transmitter:new ()
    packet.enable_group_freelist()
@@ -53,5 +53,3 @@ function Transmitter.shutdown (pid)
       shm.unlink(backlink)
    end
 end
-
-return Transmitter

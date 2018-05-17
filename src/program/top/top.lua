@@ -181,7 +181,7 @@ function print_latency_metrics (new_stats, last_stats)
    print("\n")
 end
 
-local link_metrics_row = {31, 7, 7, 7, 7, 7}
+local link_metrics_row = {45, 7, 7, 7, 7, 7}
 function print_link_metrics (new_stats, last_stats)
    print_row(link_metrics_row,
              {"Links (rx/tx/txdrop in Mpps)", "rx", "tx", "rxGb", "txGb", "txdrop"})

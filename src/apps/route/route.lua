@@ -25,19 +25,12 @@ local o_ipv4_dst_addr = l3_offset + constants.o_ipv4_dst_addr
 local o_ipv4_ttl      = l3_offset + constants.o_ipv4_ttl
 local o_ipv4_checksum = l3_offset + constants.o_ipv4_checksum
 
+local uint32_t = ffi.typeof('uint32_t')
+local uint32_ptr_t = ffi.typeof("$*", uint32_t)
+
+
 local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwritable
 local p_free = packet.free
-
--- snabb-router-v1.yang
-local ipv4_lpm_enum = {
-   'LPM4_trie',
-   'LPM4_poptrie',
-   'LPM4_248',
-   'LPM4_dxr',
-}
-
--- snabb-router-v1.yang: UNIMPLEMENTED
-local ipv6_lpm_enum = {}
 
 --- # `Route` app: route traffic to an output port based on longest prefix-match
 
@@ -98,15 +91,17 @@ function Route:init_v4()
    if self.config.routing.family_v4 then
       local family_v4 = self.config.routing.family_v4
 
-      print('LPM Implementation: ' .. family_v4.lpm_implementation)
-      
+
       -- Choose LPM implementation
-      local lpm_config = assert(ipv4_lpm_enum[family_v4.lpm_implementation])
-      local lpm_class = require('lib.lpm.'.. lpm_config:lower())[lpm_config]
+      local lpm_config = 'LPM4_'.. family_v4.lpm_implementation:lower()
+      local lpm_class = require('lib.lpm.'..lpm_config:lower())[lpm_config]
 
       self.fib_v4 = lpm_class:new()
 
-      self.neighbours_v4 = family_v4.neighbour
+      for key, neighbour in cltable.pairs(family_v4.neighbour) do
+         print('Adding neighbour with indexs ' .. key.index .. ' with address ' .. neighbour.address)
+         self.neighbours_v4[key.index] = neighbour
+      end
 
       -- Install config-loaded routes and build LPM
       for index, route in cltable.pairs(family_v4.route) do
@@ -130,7 +125,7 @@ end
 function Route:add_v4_route(route)
    -- Convert integer to prefix format
    local addr = y_ipv4_ntop(route.prefix) .. '/' .. route.length
-   self.fib_v4:add_string(addr, tonumber(route.next_hop))
+   self.fib_v4:add_string(addr, route.next_hop)
 
    print('Installed v4 route ' .. addr .. ' with next-hop ' .. tostring(route.next_hop))
 end
@@ -208,7 +203,7 @@ function Route:route_v4(p, data)
    local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
    -- If no route found, send packet to control
-   if not neighbour_idx then
+   if not neighbour_idx or neighbour_idx == 0 then
       return self:route_unknown(p)
    end
 
@@ -239,7 +234,7 @@ function Route:route_v4(p, data)
    if ttl < 1 then
       return self:route_unknown(p)
    end
-      
+
    -- Start routing packet
    -- Rewrite SRC / DST MAC Addresses
    ffi_copy(data + constants.o_ethernet_src_addr, interface.config.mac, 6)
@@ -259,6 +254,7 @@ function Route:route_v4(p, data)
 
    ctr['ipv4_tx'] = ctr['ipv4_tx'] + 1
 
+   -- TODO: Different interface link for IPv4 and IPv6 for separate Fragger paths
    return l_transmit(interface.link, p)
 end
 
@@ -334,8 +330,9 @@ function selftest ()
 
    local graph = config.new()
 
+   local neighbour_key = ffi.typeof('struct { uint32_t index; }')
    local v4_routes     = cltable.new({ key_type = ffi.typeof('uint32_t') })
-   local v4_neighbours = cltable.new({ key_type = ffi.typeof('uint32_t') })
+   local v4_neighbours = cltable.new({ key_type = neighbour_key })
 
    for i = 1, 254 do
       for j = 1, 254 do
@@ -344,6 +341,7 @@ function selftest ()
       end
    end
 
+   
    v4_neighbours[1] = { interface = "swp1", address=y_ipv4_pton("9.9.9.9"), mac=ethernet:pton("0a:12:34:56:78:90") }
    v4_neighbours[2] = { interface = "swp2", address=y_ipv4_pton("10.10.10.10"), mac=ethernet:pton("0a:98:76:54:32:10") }
 
@@ -367,7 +365,7 @@ function selftest ()
       hardware = 'test-router',
       routing = {
          family_v4 = {
-            lpm_implementation = 3, -- = 248
+            lpm_implementation = "dxr", -- = 248
             route     = v4_routes,
             neighbour = v4_neighbours,
          }

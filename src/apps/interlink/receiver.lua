@@ -5,7 +5,7 @@ module(...,package.seeall)
 local shm = require("core.shm")
 local interlink = require("lib.interlink")
 
-local Receiver = {name="apps.interlink.Receiver"}
+Receiver = {name="apps.interlink.Receiver"}
 
 function Receiver:new ()
    packet.enable_group_freelist()
@@ -54,4 +54,3 @@ function Receiver.shutdown (pid)
    end
 end
 
-return Receiver

@@ -36,7 +36,8 @@ local ext_hdr = ffi.new([[
 RandomSource = {
    config = {
       ratio  = 0.5, -- 50/50 IPv6 to IPv4
-      unique = 10,  -- Generate 10 different packets and loop 
+      unique = 10,  -- Generate 10 different packets and loop
+      size   = 9000, -- Maximum size of packet
    }
 }
 
@@ -49,6 +50,7 @@ function RandomSource:new(conf)
       udp = require("lib.protocol.udp"):new({}),
       dgram = require("lib.protocol.datagram"):new(),
       unique = conf.unique,
+      size   = conf.size,
       p = {},
    }
    local self = setmetatable(o, {__index=RandomSource})
@@ -61,7 +63,7 @@ end
 
 function RandomSource:random_packet()
    local p = packet.allocate()
-   local payload_size = math.random(500)
+   local payload_size = math.random(self.size)
    p.length = payload_size
    self.dgram:new(p)
    self.udp:src_port(math.random(2^16-1))
