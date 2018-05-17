@@ -242,18 +242,27 @@ function Route:route_v4(p, data)
 
    -- Start routing packet
    -- Rewrite SRC / DST MAC Addresses
+  
    ffi_copy(data + constants.o_ethernet_src_addr, interface.config.mac, 6)
    ffi_copy(data + constants.o_ethernet_dst_addr, neighbour.mac, 6)
+
+   if self.log_timer() then
+      print('Source MAC: ' .. ethernet:ntop(interface.config.mac) .. ' Dst MAC: ' .. ethernet:ntop(neighbour.mac))
+      print('New Source MAC: ' .. ethernet:ntop(data + constants.o_ethernet_src_addr) .. ' New Dst MAC: ' .. ethernet:ntop(data + constants.o_ethernet_dst_addr))
+   end
+
 
    -- Rewrite TTL field
    data[o_ipv4_ttl] = ttl - 1
 
-   -- Recalculate checksum based on updated TTL
-   local chksum_ptr = ffi_cast("uint16_t*", data + o_ipv4_checksum)
+   local chksum = ffi_cast("uint16_t*", data + o_ipv4_checksum)
 
-   local chksum  = chksum_ptr[0] + 0x100
-   chksum        = bit_band(chksum, 0xffff) + bit_rshift(chksum, 16)
-   chksum_ptr[0] = bit_band(chksum, 0xffff) + bit_rshift(chksum, 16)
+   -- Recalculate checksum based on updated TTL
+   local sum = lib.ntohs(chksum[0]) + 0x100
+   sum = lib.htons(sum + bit.rshift(sum, 16))
+   sum = lib.htons(sum + bit.rshift(sum, 16))
+
+   chksum[0] = sum
 
    local ctr = self.ctr
 

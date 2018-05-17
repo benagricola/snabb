@@ -51,7 +51,7 @@ function RandomSource:new(conf)
 
 
    local self = setmetatable(o, {__index=RandomSource})
-   
+
    for i = 0, (o.unique - 1) do
       self.p[i] = self:random_packet()
    end
@@ -81,6 +81,7 @@ function RandomSource:random_packet()
       ip:total_length(ip:sizeof() + udp:sizeof()
                               + payload_size)
       ip:ttl(math.random(100))
+      ip:checksum()
       dgram:push(ip)
       eth:type(0x0800)
    else
