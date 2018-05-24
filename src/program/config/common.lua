@@ -77,7 +77,7 @@ function parse_command_line(args, opts)
    function handlers.c(arg) ret.socket = arg end
    function handlers.v(arg) ret.verbose = true end
    function handlers.f(arg)
-      assert(arg == "yang" or arg == "xpath", "Not valid output format")
+      assert(arg == "yang" or arg == "xpath" or arg == "influxdb", "Not valid output format")
       ret.format = arg
    end
    handlers['print-default'] = function ()
