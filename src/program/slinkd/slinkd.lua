@@ -191,7 +191,7 @@ function run(args)
       while true do
          local nlmsg = nl.read(nlsock, nil, 16384, false)
          if nlmsg then
-            for k, msg in ipairs(nlmsg) do
+            for _, msg in ipairs(nlmsg) do
                local req = netlink_handlers[msg.nl](msg)
                if req then
                   pending_snabb_requests:put(req)
