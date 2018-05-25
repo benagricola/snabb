@@ -373,7 +373,7 @@ mt.rtmsg = {
     -- if S.RTF[k] then return bit.band(i.flags, S.RTF[k]) ~= 0 end -- TODO see above
   end,
   __tostring = function(i) -- TODO make more like output of ip route
-    local s = "dst: " .. tostring(i.dest) .. "/" .. i.dst_len .. " gateway: " .. tostring(i.gw) .. " src: " .. tostring(i.source) .. "/" .. i.src_len .. " if: " .. (i.output or i.oif)
+    local s = "dst: " .. tostring(i.dest) .. "/" .. i.dst_len .. " gateway: " .. tostring(i.gw) .. " src: " .. tostring(i.source) .. "/" .. i.src_len .. " if: " .. (i.output or i.oif or 'unknown')
     return s
   end,
 }
@@ -442,7 +442,11 @@ mt.ifaddr = {
   __index = function(i, k)
     if meth.ifaddr.index[k] then return meth.ifaddr.index[k](i) end
     if c.IFA_F[k] then return bit.band(i.ifaddr.ifa_flags, c.IFA_F[k]) ~= 0 end
-  end
+  end,
+  __tostring = function(i) -- TODO make more like output of ip route
+   local s = tostring(i.addr) .. "/" .. tostring(i.prefixlen) .. " dev " .. i.label .. " scope " .. tostring(i.scope)
+   return s
+  end,
 }
 
 -- TODO functions repetitious
