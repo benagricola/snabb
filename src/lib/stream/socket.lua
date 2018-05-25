@@ -4,8 +4,9 @@
 
 module(..., package.seeall)
 
+local bit  = require('bit')
 local file = require('lib.stream.file')
-local S = require('syscall')
+local S    = require('syscall')
 
 local Socket = {}
 local Socket_mt = {__index = Socket}
@@ -24,6 +25,54 @@ function Socket:listen_unix(file)
    self.scratch_sockaddr = S.t.sockaddr_un()
    assert(self.fd:bind(sa))
    assert(self.fd:listen())
+end
+
+function Socket:listen_netlink(groups)
+   local sa = S.t.sockaddr_nl()
+
+   -- Convert groups into bit shifted value
+   for _, group in ipairs(groups) do
+      local gv = assert(S.c.RTNLGRP[group])
+      sa.groups = bit.bor(sa.groups, (bit.lshift(1, gv - 1)))
+   end
+
+   assert(self.fd:bind(sa))
+   return self
+end
+
+-- TODO: Must be a nicer way to avoid implementing this?
+function Socket:getsockname()
+   return self.fd:getsockname()
+end
+
+function Socket:seq()
+   return self.fd:seq()
+end
+
+function Socket:recvmsg(m)
+   while true do
+      local len, err = self.fd:recvmsg(m)
+      if len then
+         return len, nil
+      elseif err.AGAIN or err.WOULDBLOCK then
+         file.wait_for_readable(self.fd)
+      else
+         error(tostring(err))
+      end
+   end
+end
+
+function Socket:sendmsg(m)
+   while true do
+      local len, err = self.fd:sendmsg(m)
+      if len then
+         return len, nil
+      elseif err.AGAIN or err.WOULDBLOCK then
+         file.wait_for_writable(self.fd)
+      else
+         error(tostring(err))
+      end
+   end
 end
 
 function Socket:accept()
@@ -78,6 +127,12 @@ end
 function connect_unix(file, stype, protocol)
    local s = socket('unix', stype or 'stream', protocol)
    return s:connect_unix(file)
+end
+
+function connect_netlink(typ, groups)
+   local tp = assert(S.c.NETLINK[typ])
+   local s  = socket('netlink', 'raw', tp)
+   return s:listen_netlink(groups)
 end
 
 function Socket:close()
