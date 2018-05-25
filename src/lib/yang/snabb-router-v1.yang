@@ -1,0 +1,285 @@
+module snabb-router-v1 {
+  namespace snabb:router;
+  prefix router;
+
+  import ietf-inet-types       { prefix inet; }
+  import ietf-yang-types       { prefix yang; }
+
+  organization "Squiz UK Ltd";
+  contact "Ben Agricola <bagricola@squiz.co.uk>";
+  description
+   "Snabb based Layer 3 Router with Firewall functionality,
+     based on a specific hardware type that maps interfaces to cpus.";
+
+  revision 2018-05-03 {
+    description
+     "Initial revision.";
+  }
+
+  typedef ipv4-lpm-implementation {
+    type enumeration {
+      // 1-indexed to avoid shenanigans with lua tables
+      enum trie {
+        value 1;
+        description "Patricia Trie based LPM lookup";
+      }
+      enum poptrie {
+        value 2;
+        description "Poptrie (Compressed Trie) based LPM lookup";
+      }
+      enum 248 {
+        value 3;
+        description "DIR-24-8-BASIC based LPM lookup";
+      }
+      enum dxr {
+        value 4;
+        description "DXR based LPM lookup";
+      }
+    }
+    description "Represents the LPM implementation to use for routing lookups.";
+  }
+  
+
+  container hardware {
+    description
+      "Describes the hardware setup of the router, mapping physical to virtual ports.";
+  
+    list device {
+      key name;
+
+      description
+        "A Mapping of physical PCI ID's to interface names.
+        This defines the appropriate driver to use, and the cpus
+        to bind this device to.";
+      
+      leaf pci-id {
+        type string { length 1..7; }
+        mandatory true;
+        description
+        "PCI ID of this physical device.";
+      }
+
+      leaf name {
+        type string { length 1..10; }
+
+        mandatory true;
+        description
+          "Alias name given to this physical device.";
+      }
+    }
+  }
+
+  container interfaces {
+    list interface {
+      key name;
+
+      description
+        "Configures an interface. This may refer to a physically defined
+        interface as well as a virtual interface (e.g. mirror port).";
+      
+      leaf index {
+        type        uint32;
+        description "Unique index of this interface. Can be nil until learned";
+      }
+
+      leaf name {
+        type      string {
+          length    1..10;
+        }
+        mandatory "true";
+        description
+          "Alias name of the interface.";
+      }
+
+      leaf up {
+        type    boolean;
+        description
+          "Is the interface up";
+      }
+
+      leaf mac {
+        type yang:mac-address;
+        description "MAC Address assigned to this interface";
+      }
+
+      leaf mtu {
+        type    uint16;
+        default 1500;
+        description
+          "Maximum transmission unit of interface, in Linux format";
+      }
+
+      leaf passthrough {
+        type    boolean;
+        default "false";
+        description
+          "Whether this interface is in passthrough mode";
+      }
+
+      container mirror {
+        container inbound {
+          leaf target {
+            type string;
+            description
+              "Name of interface to mirror inbound traffic to.";
+          }
+          leaf rate {
+            type        uint16;
+            default     1;  // Sample every packet
+            description "Sample rate of mirroring. Sample every #n packets.";
+          }
+        }
+        container outbound {
+          leaf target {
+            type string;
+            description
+              "Name of interface to mirror outbound traffic to.";
+          }
+          leaf rate {
+            type        uint16;
+            default     1;  // Sample every packet
+            description "Sample rate of mirroring. Sample every #n packets.";
+          }
+        }
+      }
+    }
+  }
+
+  container routing {
+    leaf next-hops {
+      type        uint8;
+      default     8;
+      description "The maximum number of next-hops for a route";
+    }
+
+    container family-v4 {
+      leaf lpm-implementation {
+        type ipv4-lpm-implementation;
+        default dxr;
+        description "The LPM Implementation to use for IPv4 routing lookups.";
+      }
+
+      list neighbour {
+        key index;
+        description "Describes a neighbour by IP and MAC";
+
+        leaf index {
+          type        uint32;
+          mandatory   "true";
+          description "Unique index of this neighbour referred to by routes.";
+        }
+
+        leaf interface {
+          type      string {
+            length 1..10;
+          }
+
+          mandatory "true";
+          description
+            "Alias name of the interface behind which this neighbour resides.";
+        }
+
+        leaf address {
+          type inet:ipv4-address;
+          description
+            "Address of this neighbour";
+        }
+
+        leaf mac {
+          type yang:mac-address;
+          description "MAC Address assigned to this neighbour";
+        }
+      }
+
+      list route {
+        key index;
+        description "Describes an IPv4 route by address and next-hop(s)";
+        
+        leaf index {
+          type        uint32;
+          mandatory   true;
+          description "Unique index of this neighbour referred to by next-hops.";
+        }
+
+        leaf prefix {
+          type inet:ipv4-address;
+          description
+            "Route target address.";
+        }
+
+        leaf length {
+          type        uint8 { range 0..32; }
+          mandatory   true;
+          description "Prefix length assigned to this route.";
+        }
+
+        leaf next-hop {
+          type         uint8;
+          description "Next-hop for this route";
+        }
+      }
+    }
+
+    container family-v6 {
+      list neighbour {
+        key index;
+        description "Describes a neighbour by IP and MAC";
+
+        leaf index {
+          type        uint32;
+          mandatory   "true";
+          description "Unique index of this neighbour referred to by routes.";
+        }
+
+        leaf interface {
+          type string {
+            length 1..10;
+          }
+          mandatory "true";
+
+          description
+            "Alias name of the interface behind which this neighbour resides.";
+        }
+
+        leaf-list address {
+          type inet:ipv6-address;
+          min-elements 1;
+          description
+            "Addresses of this neighbour";
+        }
+
+        leaf mac {
+          type yang:mac-address;
+          description "MAC Address assigned to this neighbour";
+        }
+      }
+      list route {
+        key index;
+        description "Describes an IPv4 route by address and next-hop(s)";
+        
+        leaf index {
+          type        uint32;
+          mandatory   true;
+          description "Unique index of this neighbour referred to by next-hops.";
+        }
+
+        leaf prefix {
+          type inet:ipv6-address;
+          description
+            "Route target address.";
+        }
+
+        leaf length {
+          type        uint8 { range 0..128; }
+          mandatory   true;
+          description "Prefix length assigned to this route.";
+        }
+
+        leaf-list next-hop {
+          type         uint32;
+          description "Next-hop for this route";
+        }
+      }
+    }
+  }
+}

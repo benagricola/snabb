@@ -6,6 +6,7 @@ local ffi = require("ffi")
 local fiber = require("lib.fibers.fiber")
 local queue = require("lib.fibers.queue")
 local mem = require("lib.stream.mem")
+local ethernet = require("lib.protocol.ethernet")
 local socket = require("lib.stream.socket")
 local rpc = require("lib.yang.rpc")
 local data = require("lib.yang.data")
@@ -18,10 +19,12 @@ local nl          = S.nl
 local t           = S.t
 
 local RTM         = c.RTM
-local rdump_flags = c.NLM_F('request', 'dump', 'ack')
-local rroot_flags = c.NLM_F('request', 'root', 'ack')
+local rdump_flags = c.NLM_F('request', 'dump')
+local rroot_flags = c.NLM_F('request', 'root')
 
 require('lib.stream.compat').install()
+
+local schema_name = 'snabb-router-v1'
 
 local function validate_config(schema_name, revision_date, path, value_str)
    local parser = common.config_parser(schema_name, path)
@@ -29,9 +32,51 @@ local function validate_config(schema_name, revision_date, path, value_str)
    return common.serialize_config(value, schema_name, path)
 end
 
+local family_path = {
+   [c.AF.INET]  = 'family-v4',
+   [c.AF.INET6] = 'family-v6',
+}
+
+local link_path = function(link)
+   local path = {'interfaces'}
+   table.insert(path, 'interface')
+   return table.concat(path, '/')
+end
+
+local neigh_path = function(neigh)
+   local path = {'routing'}
+   table.insert(path, family_path[neigh.family])
+   table.insert(path, 'neighbour')
+   return table.concat(path, '/')
+end
+
 local netlink_handlers = {
    [RTM.NEWLINK] = function(link)
-      print("[LINK] ADD", link)
+      -- Loopback and non-mac interfaces not supported
+      if link.loopback or not link.macaddr then return end
+
+      local path   = link_path(link)
+
+      local value = {
+         [link.name] = {
+            index  = link.index,
+            mac    = ethernet:pton(tostring(link.macaddr)),
+            up     = link.flags[c.IFF.UP],
+            mtu    = link.mtu,
+         }                  
+      }
+        
+      local config = common.serialize_config(value, schema_name, path)
+
+      local method =  link.newlink and 'add-config' or 'set-config'
+
+      print("[LINK] ADD", method, config)
+
+      return { 
+         method = method,
+         args = { schema=schema_name, path=path } 
+      }
+
    end,
    [RTM.DELLINK] = function(link)
       print("[LINK] DEL", link)
@@ -43,6 +88,23 @@ local netlink_handlers = {
       print("[ADDR] DEL", addr)
    end,
    [RTM.NEWNEIGH] = function(neigh)
+      local op = neigh.newneigh and 'add-config' or 'set-config'
+
+      local path = neigh_path(neigh)
+
+      local value = {
+         address   = neigh.dst,
+         mac       = neigh.lladdr,
+         interface = neigh.ifindex,
+      }
+      
+      print(value)
+      print(path)
+
+      -- local config = validate_config(schema_name, revision_date, path, value)
+
+      --return  {method='set-config',
+      --args={schema=schema_name, revision=revision_date, path=path, config=config}}
       print("[NEIGH] ADD", neigh)
    end,
    [RTM.DELNEIGH] = function(neigh)
@@ -75,7 +137,7 @@ function run(args)
    -- leader:nonblock()
 
    -- Subscribe to default groups - LINK, ROUTE, NEIGH and ADDR
-   local nlsock = socket.connect_netlink("ROUTE", {
+   local ok, nlsock = pcall(socket.connect_netlink, "ROUTE", {
       "LINK",
       "NEIGH",
       "IPV4_IFADDR",
@@ -83,8 +145,14 @@ function run(args)
       "IPV4_ROUTE",
       "IPV6_ROUTE"
    })
+
+   if not ok then
+      error("Could not connect to netlink socket\n")
+      os.exit(1)
+   end
       
    local pending_netlink_requests = queue.new()
+   local pending_snabb_requests   = queue.new()
 
    local function exit_if_error(f)
       return function()
@@ -101,32 +169,32 @@ function run(args)
    -- nl.write (sock, dest, ntype, flags, af, ...)
    local netlink_dump_reqs = {
       { c.RTM.GETLINK, rdump_flags, nil, t.rtgenmsg, { rtgen_family = c.AF.PACKET } },
-      { c.RTM.GETNEIGH, rdump_flags, nil, t.ndmsg, t.ndmsg() },
+     -- { c.RTM.GETNEIGH, rdump_flags, nil, t.ndmsg, t.ndmsg() },
       -- V4
-      { c.RTM.GETADDR, rdump_flags, c.AF.INET, t.ifaddrmsg, { ifa_family = c.AF.INET } },
-      { c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } },
+    --  { c.RTM.GETADDR, rdump_flags, c.AF.INET, t.ifaddrmsg, { ifa_family = c.AF.INET } },
+    --  { c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } },
 
-      { c.RTM.GETROUTE, rroot_flags, c.AF.INET, t.rtmsg, t.rtmsg{ family = c.AF.INET, type = c.RTN.UNICAST } },
+    --  { c.RTM.GETROUTE, rroot_flags, c.AF.INET, t.rtmsg, t.rtmsg{ family = c.AF.INET, type = c.RTN.UNICAST } },
       --{ c.RTM.GETROUTE, rroot_flags, c.AF.INET6, t.rtmsg, t.rtmsg{ family = c.AF.INET6, type = c.RTN.UNICAST } },
    }
 
    -- Ask for netlink dump on slinkd start
    local function request_netlink_dump()
-
       for _, req in ipairs(netlink_dump_reqs) do
          pending_netlink_requests:put(req)
       end
    end
+
 
    -- Received netlink events require reconfiguration of snabb via the config leader
    local function handle_netlink_events()
       while true do
          local nlmsg = nl.read(nlsock, nil, 16384, false)
          if nlmsg then
-            for _, msg in ipairs(nlmsg) do
-               local out = netlink_handlers[msg.nl](msg)
-               if out then
-                  print("OUT", out)
+            for k, msg in ipairs(nlmsg) do
+               local req = netlink_handlers[msg.nl](msg)
+               if req then
+                  pending_snabb_requests:put(req)
                end
             end
          end
@@ -137,6 +205,13 @@ function run(args)
       while true do
          local nt = pending_netlink_requests:get()
          nl.write(nlsock, nil, unpack(nt))
+      end
+   end
+
+   local function handle_pending_snabb_requests()
+      while true do
+         local nt = pending_snabb_requests:get()
+         -- Call leader
       end
    end
 

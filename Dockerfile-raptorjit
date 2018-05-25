@@ -1,5 +1,5 @@
 FROM alpine:3.7 AS raptorjit
-RUN apk add --no-cache libgcc alpine-sdk gcc libpcap-dev linux-headers findutils
+RUN apk add --no-cache iproute2 libgcc alpine-sdk gcc libpcap-dev linux-headers findutils
 COPY . /snabb
 RUN rm -rf /snabb/src/*
 RUN cd /snabb && make clean && make -j deps
