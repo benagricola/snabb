@@ -1,5 +1,6 @@
 FROM raptorjit AS build
 COPY . /snabb
+#RUN cd snabb && make -j
 RUN cd snabb/src && make -j
 
 FROM raptorjit
