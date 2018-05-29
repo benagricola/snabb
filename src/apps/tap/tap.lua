@@ -24,6 +24,7 @@ Tap = { }
 -- hence the name _config instead of config for this table.
 Tap._config = {
    name = { required = true },
+   io_errors = { default = true },
    mtu = { default = 1514 },
    mtu_fixup = { default = true },
    mtu_offset = { default = 14 },
@@ -47,11 +48,15 @@ end
 
 -- Get or set the operational status of a tap device.  Return the
 -- current status.
-local function _status (sock, ifr, status)
+local function _status (sock, ifr, status, io_errors)
    local ok, err = sock:ioctl("SIOCGIFFLAGS", ifr)
    if not ok then
-      error("Error getting flags for tap device " .. ifr.name
-               .. ": " .. tostring(err))
+      if io_errors then
+         error("Error getting flags for tap device " .. ifr.name
+                  .. ": " .. tostring(err))
+      else
+         return 2 -- down
+      end
    end
    if status ~= nil then
       if status == 1 then
@@ -120,7 +125,7 @@ function Tap:new (conf)
 
    if ephemeral then
       -- Set status to "up"
-      _status(sock, ifr, 1)
+      _status(sock, ifr, 1, conf.io_errors)
    end
    local mtu_eff = conf.mtu - (conf.mtu_fixup and conf.mtu_offset) or 0
    local mtu_set = conf.mtu_set
@@ -152,7 +157,7 @@ function Tap:new (conf)
                                 txmcast   = {counter},
                                 txbcast   = {counter},
                                 type      = {counter, 0x1001}, -- propVirtual
-                                status    = {counter, _status(sock, ifr)},
+                                status    = {counter, _status(sock, ifr, conf.io_errors)},
                                 mtu       = {counter, conf.mtu},
                                 speed     = {counter, 0},
                                 macaddr   = {counter, _macaddr(sock, ifr)} }},
@@ -160,7 +165,7 @@ function Tap:new (conf)
 end
 
 function Tap:status()
-   counter.set(self.shm.status, _status(self.sock, self.ifr))
+   counter.set(self.shm.status, _status(self.sock, self.ifr, self.io_errors))
 end
 
 function Tap:pull ()
@@ -177,7 +182,11 @@ function Tap:pull ()
          return
       end
       if not len then
-         error("Failed read on " .. self.name .. ": " .. tostring(err))
+         if self.io_errors then
+            error("Failed read on " .. self.name .. ": " .. tostring(err))
+         else
+            return
+         end
       end
       self.pkt.length = len
       link.transmit(l, self.pkt)
@@ -202,7 +211,11 @@ function Tap:push ()
       local len, err = S.write(self.fd, p.data, p.length)
       -- errno == EAGAIN indicates that the write would of blocked
       if not len and err.errno ~= const.E.AGAIN or len and len ~= p.length then
-         error("Failed write on " .. self.name .. tostring(err))
+         if self.io_errors then
+            error("Failed write on " .. self.name .. tostring(err))
+         else
+            return
+         end
       end
       if len ~= p.length and err.errno == const.E.AGAIN then
          return

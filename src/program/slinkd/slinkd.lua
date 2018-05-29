@@ -6,8 +6,10 @@ local ffi = require("ffi")
 local fiber = require("lib.fibers.fiber")
 local queue = require("lib.fibers.queue")
 local mem = require("lib.stream.mem")
+local file = require("lib.stream.file")
 local ethernet = require("lib.protocol.ethernet")
 local socket = require("lib.stream.socket")
+local yang = require("lib.yang.yang")
 local rpc = require("lib.yang.rpc")
 local data = require("lib.yang.data")
 local path_lib = require("lib.yang.path")
@@ -26,85 +28,95 @@ require('lib.stream.compat').install()
 
 local schema_name = 'snabb-router-v1'
 
-local function validate_config(schema_name, revision_date, path, value_str)
-   local parser = common.config_parser(schema_name, path)
-   local value = parser(mem.open_input_string(value_str))
-   return common.serialize_config(value, schema_name, path)
-end
-
 local family_path = {
    [c.AF.INET]  = 'family-v4',
    [c.AF.INET6] = 'family-v6',
 }
 
-local link_path = function(link)
-   local path = {'interfaces'}
-   table.insert(path, 'interface')
-   return table.concat(path, '/')
+local snabb_config = nil
+
+local has_changed = function(existing, new) 
+   for k, v in pairs(new) do
+      if existing[k] ~= v then
+         print('Value for ' .. tostring(k) .. ' has changed from ' .. tostring(existing[k]) .. ' to ' .. tostring(v))
+         return true
+      end
+   end
+   return false
 end
 
-local neigh_path = function(neigh)
-   local path = {'routing'}
-   table.insert(path, family_path[neigh.family])
-   table.insert(path, 'neighbour')
-   return table.concat(path, '/')
+local get_existing = function(config, ...)
+   for _, pitem in ipairs({...}) do
+      if config ~= nil then
+         config = config[pitem]
+      else
+         return nil
+      end
+   end
+   return config
+end
+
+-- Update top-level config instance at `path`
+local update_config = function(path)
+   local xpath = '/'..path
+   return { 
+      method = 'set-config',
+      args = { 
+         schema=schema_name,
+         path=xpath,
+         config = common.serialize_config(snabb_config[path], schema_name, xpath)
+      } 
+   }
 end
 
 local netlink_handlers = {
    [RTM.NEWLINK] = function(link)
+      print("[LINK] ADD", link)
+
       -- Loopback and non-mac interfaces not supported
       if link.loopback or not link.macaddr then return end
 
-      local path   = link_path(link)
+      local device = get_existing(snabb_config, 'hardware', 'device', link.name)
 
-      local value = {
-         [link.name] = {
-            index  = link.index,
-            mac    = ethernet:pton(tostring(link.macaddr)),
-            up     = link.flags[c.IFF.UP],
-            mtu    = link.mtu,
-         }                  
+      if not device then
+         print('No hardware found for link ' .. link.name .. ', ignoring...')
+         return
+      end
+
+      local new = {
+         index  = link.index,
+         name   = link.name,
+         mac    = tostring(link.macaddr),
+         up     = link.flags[c.IFF.UP],
+         mtu    = link.mtu,  
       }
-        
-      local config = common.serialize_config(value, schema_name, path)
+   
+      local existing = get_existing(snabb_config, 'interfaces', 'interface', link.name)
+   
+      if existing then
+         if not has_changed(existing, new) then
+            return
+         end
+      end
+   
+      snabb_config.interfaces.interface[link.name] = new
 
-      local method =  link.newlink and 'add-config' or 'set-config'
-
-      print("[LINK] ADD", method, config)
-
-      return { 
-         method = method,
-         args = { schema=schema_name, path=path } 
-      }
-
+      return update_config('interfaces')
    end,
    [RTM.DELLINK] = function(link)
       print("[LINK] DEL", link)
-   end,
-   [RTM.NEWADDR] = function(addr)
-      print("[ADDR] ADD", addr)
-   end,
-   [RTM.DELADDR] = function(addr)
-      print("[ADDR] DEL", addr)
+
+      local existing = get_existing(snabb_config, 'interfaces', 'interface', link.name)
+
+      if not existing then
+         return nil
+      end
+
+      snabb_config.interfaces.interface[link.name] = nil
+
+      return update_config('interfaces')
    end,
    [RTM.NEWNEIGH] = function(neigh)
-      local op = neigh.newneigh and 'add-config' or 'set-config'
-
-      local path = neigh_path(neigh)
-
-      local value = {
-         address   = neigh.dst,
-         mac       = neigh.lladdr,
-         interface = neigh.ifindex,
-      }
-      
-      print(value)
-      print(path)
-
-      -- local config = validate_config(schema_name, revision_date, path, value)
-
-      --return  {method='set-config',
-      --args={schema=schema_name, revision=revision_date, path=path, config=config}}
       print("[NEIGH] ADD", neigh)
    end,
    [RTM.DELNEIGH] = function(neigh)
@@ -115,6 +127,12 @@ local netlink_handlers = {
    end,
    [RTM.DELROUTE] = function(route)
       print("[ROUTE] DEL", route)
+   end,
+   [RTM.NEWADDR] = function(addr)
+      print("[ADDR] ADD", addr)
+   end,
+   [RTM.DELADDR] = function(addr)
+      print("[ADDR] DEL", addr)
    end
 }
 
@@ -127,14 +145,16 @@ local function attach_listener(leader, caller, schema_name, revision_date)
 end
 
 function run(args)
-   -- args = common.parse_command_line(args, { command='listen' })
-   -- local caller = rpc.prepare_caller('snabb-config-leader-v1')
-   -- local leader = common.open_socket_or_die(args.instance_id)
-   -- attach_listener(leader, caller, args.schema_name, args.revision_date)
+   args = common.parse_command_line(args, { command='listen' })
+   local caller = rpc.prepare_caller('snabb-config-leader-v1')
+   local leader = common.open_socket_or_die(args.instance_id)
+   attach_listener(leader, caller, args.schema_name, args.revision_date)
    
+   local client_tx = file.fdopen(S.stdout)
+
    local handler = require('lib.fibers.file').install_poll_io_handler()
 
-   -- leader:nonblock()
+   leader:nonblock()
 
    -- Subscribe to default groups - LINK, ROUTE, NEIGH and ADDR
    local ok, nlsock = pcall(socket.connect_netlink, "ROUTE", {
@@ -153,6 +173,7 @@ function run(args)
       
    local pending_netlink_requests = queue.new()
    local pending_snabb_requests   = queue.new()
+   local pending_snabb_replies    = queue.new()
 
    local function exit_if_error(f)
       return function()
@@ -164,18 +185,17 @@ function run(args)
       end
    end
 
-      
    -- nlmsg    (ntype, flags, af, ...)
    -- nl.write (sock, dest, ntype, flags, af, ...)
    local netlink_dump_reqs = {
       { c.RTM.GETLINK, rdump_flags, nil, t.rtgenmsg, { rtgen_family = c.AF.PACKET } },
-     -- { c.RTM.GETNEIGH, rdump_flags, nil, t.ndmsg, t.ndmsg() },
+      { c.RTM.GETNEIGH, rdump_flags, nil, t.ndmsg, t.ndmsg() },
       -- V4
-    --  { c.RTM.GETADDR, rdump_flags, c.AF.INET, t.ifaddrmsg, { ifa_family = c.AF.INET } },
-    --  { c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } },
+      { c.RTM.GETADDR, rdump_flags, c.AF.INET, t.ifaddrmsg, { ifa_family = c.AF.INET } },
+      { c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } },
 
-    --  { c.RTM.GETROUTE, rroot_flags, c.AF.INET, t.rtmsg, t.rtmsg{ family = c.AF.INET, type = c.RTN.UNICAST } },
-      --{ c.RTM.GETROUTE, rroot_flags, c.AF.INET6, t.rtmsg, t.rtmsg{ family = c.AF.INET6, type = c.RTN.UNICAST } },
+      { c.RTM.GETROUTE, rroot_flags, c.AF.INET, t.rtmsg, t.rtmsg{ family = c.AF.INET, type = c.RTN.UNICAST } },
+      { c.RTM.GETROUTE, rroot_flags, c.AF.INET6, t.rtmsg, t.rtmsg{ family = c.AF.INET6, type = c.RTN.UNICAST } },
    }
 
    -- Ask for netlink dump on slinkd start
@@ -183,6 +203,35 @@ function run(args)
       for _, req in ipairs(netlink_dump_reqs) do
          pending_netlink_requests:put(req)
       end
+   end
+
+   local function load_snabb_config()
+      local req = {
+         method = 'get-config',
+         args = { schema=schema_name, path='/' },
+         callback = function(parse_reply, msg)
+            local cfg = parse_reply(mem.open_input_string(msg))
+
+            if not cfg then
+               error('Unable to load snabb config from instance, aborting!')
+            end
+
+            snabb_config = yang.load_config_for_schema_by_name(schema_name, mem.open_input_string(cfg.config))
+
+
+            if not snabb_config.interfaces then
+               snabb_config.interfaces = {}
+            end
+
+            if not snabb_config.interfaces.interface then
+               snabb_config.interfaces.interface = {}
+            end
+
+            -- Only request netlink dump once snabb config is loaded
+            fiber.spawn(exit_if_error(request_netlink_dump))
+         end
+      }
+      pending_snabb_requests:put(req)
    end
 
 
@@ -211,7 +260,29 @@ function run(args)
    local function handle_pending_snabb_requests()
       while true do
          local nt = pending_snabb_requests:get()
+
+         local msg, parse_reply = rpc.prepare_call(
+            caller, nt.method, nt.args)
+
+         if not nt.callback then
+            pending_snabb_replies:put({ callback = nil })
+         else
+            pending_snabb_replies:put({callback = nt.callback, parse_reply = parse_reply})
+         end
+
          -- Call leader
+         common.send_message(leader, msg)
+      end
+   end
+
+   local function handle_pending_snabb_replies()
+      while true do
+         local res = pending_snabb_replies:get()
+         if res.callback then
+            res.callback(res.parse_reply, common.recv_message(leader))
+         else
+            common.recv_message(leader)
+         end
       end
    end
 
@@ -222,7 +293,9 @@ function run(args)
 
    fiber.spawn(exit_if_error(handle_netlink_events))
    fiber.spawn(exit_if_error(handle_pending_netlink_requests))
-   fiber.spawn(exit_if_error(request_netlink_dump))
+   fiber.spawn(exit_if_error(handle_pending_snabb_requests))
+   fiber.spawn(exit_if_error(handle_pending_snabb_replies))
+   fiber.spawn(exit_if_error(load_snabb_config))
    --fiber.spawn(exit_when_finished(handle_alarms))
 
    fiber.main()
