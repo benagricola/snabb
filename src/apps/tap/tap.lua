@@ -48,7 +48,7 @@ end
 
 -- Get or set the operational status of a tap device.  Return the
 -- current status.
-local function _status (sock, ifr, status, io_errors)
+local function _status (sock, ifr, io_errors, status)
    local ok, err = sock:ioctl("SIOCGIFFLAGS", ifr)
    if not ok then
       if io_errors then
@@ -125,7 +125,7 @@ function Tap:new (conf)
 
    if ephemeral then
       -- Set status to "up"
-      _status(sock, ifr, 1, conf.io_errors)
+      _status(sock, ifr, conf.io_errors, 1)
    end
    local mtu_eff = conf.mtu - (conf.mtu_fixup and conf.mtu_offset) or 0
    local mtu_set = conf.mtu_set

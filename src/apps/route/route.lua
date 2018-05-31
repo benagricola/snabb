@@ -51,8 +51,8 @@ function Route:new(config)
       config               = config,
       fib_v4               = nil,
       fib_v6               = nil,
-      neighbours_v4        = cltable.new({ key_type = ffi.typeof('uint32_t') }), -- Default empty cltable
-      neighbours_v6        = cltable.new({ key_type = ffi.typeof('uint32_t') }), -- Default empty cltable
+      neighbours_v4        = {}, -- Default empty cltable
+      neighbours_v6        = {}, -- Default empty cltable
       sync_timer           = lib.throttle(1),
       v4_build_timer       = lib.throttle(1),
       v6_build_timer       = lib.throttle(1),
@@ -102,13 +102,13 @@ function Route:init_v4()
       -- Add default next hop with index 0 (required! do not remove)
       self.fib_v4:add_string('0.0.0.0/0', 0)
 
-      for key, neighbour in cltable.pairs(family_v4.neighbour) do
-         self.neighbours_v4[key.index] = neighbour
+      for k, v in pairs(family_v4.neighbour) do
+         self.neighbours_v4[tonumber(k)] = v
       end
 
       -- Install config-loaded routes and build LPM
-      for index, route in cltable.pairs(family_v4.route) do
-         self:add_v4_route(route)
+      for dst, route in pairs(family_v4.route) do
+         self:add_v4_route(dst, route)
       end
 
       -- Build LPM only after all 
@@ -119,26 +119,21 @@ end
 function Route:init_v6()
    local config = self.config
    if config.routing.family_v6 then
-      print('IPv6 routing currently not supported. All IPv6 traffic will be sent to the control port.')
       self.neighbours_v6 = config.routing.family_v6.neighbour
    end
 end
 
 -- Note that this does *not* lpm:build()
-function Route:add_v4_route(route)
-   -- Convert integer to prefix format
-   local addr = y_ipv4_ntop(route.prefix) .. '/' .. route.length
-   self.fib_v4:add_string(addr, route.next_hop)
+function Route:add_v4_route(dst, route)
+   -- LPM for fast routing lookup once a neighbour is identified
 
-   print('Installed v4 route ' .. addr .. ' with next-hop ' .. route.next_hop)
+   -- Add route with no connected next-hop (neigh)
+   self.fib_v4:add_string(dst, tonumber(route.gateway))
 end
 
-function Route:remove_v4_route(route)
+function Route:remove_v4_route(dst, route)
    -- Convert integer to wire format
-   local addr = y_ipv4_ntop(route.prefix) .. '/' .. route.length
-   self.fib_v4:remove_string(addr)
-
-   --print('Uninstalled v4 route ' .. addr)
+   self.fib_v4:remove_string(dst)
 end
 
 function Route:build_v4_route()
@@ -203,11 +198,9 @@ function Route:route_v4(p, data)
    -- Assume that no 'local' routes are installed
    -- If this is the case, we might try to forward packets
    -- which are aimed at a 'local' IP. TODO: Test this!
-   --local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
    local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
-   -- If no route found, send packet to control
    if not neighbour_idx or neighbour_idx == 0 then
       return self:route_unknown(p)
    end
@@ -217,13 +210,19 @@ function Route:route_v4(p, data)
    
    -- If no neighbour found, send packet to control
    if not neighbour then
+      if self:log_timer() then
+         print('No Neighbour', neighbour_idx)
+      end
       return self:route_unknown(p)
    end
 
-   local interface = self:get_output_by_name(neighbour.interface)
+   local interface = self.output_links[neighbour.interface]
 
    -- If no interface found, send packet to control
    if not interface then
+      if self:log_timer() then
+         print('No Interface', neighbour.interface)
+      end
       return self:route_unknown(p)
    end
 
@@ -316,17 +315,15 @@ end
 function Route:link ()
    local interfaces = self.config.interfaces.interface
 
-   link_id = 1
    for name, l in pairs(self.output) do
       if type(name) == 'string' and name ~= 'control' then
-         self.output_links[link_id] = { 
+         local iface = interfaces[name]
+         self.output_links[iface.index] = { 
             name   = name, 
             link   = l,
-            config = interfaces[name], 
+            config = iface, 
          }
-         self.output_links_by_name[name] = link_id
-
-         link_id = link_id + 1
+         self.output_links_by_name[name] = iface.index
       end
    end
 end
