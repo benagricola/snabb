@@ -234,6 +234,8 @@ function Route:route_v4(p, data)
       return self:route_unknown(p)
    end
 
+   print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via gateway ' .. neighbour.address)
+   
    -- Start routing packet
    -- Rewrite SRC / DST MAC Addresses
   
