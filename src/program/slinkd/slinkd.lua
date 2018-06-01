@@ -247,6 +247,9 @@ local netlink_handlers = {
          return
       end
 
+      local local_route = route.rtmsg.rtm_type == c.RTN.LOCAL
+
+
       local gateway     = tostring(route.gw)
       local dst         = tostring(route.dest) .. "/" .. tostring(route.dst_len)
       local cur_neigh   = neigh_index_map[gateway]
@@ -256,26 +259,33 @@ local netlink_handlers = {
 
       local existing_route = get_config(snabb_config, 'routing', path, 'route', dst)
       
-      if cur_neigh then
-         existing_neigh = get_config(snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
+      local new
+
+      -- Send local routes to control
+      if local_route then
+         new = new_route(dst, tostring(0))
+      else
+         if cur_neigh then
+            existing_neigh = get_config(snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
+         end
+
+         -- No neighbour already learned for this route - create a dummy
+         if not existing_neigh then
+            neigh_index = neigh_index + 1
+
+            existing_neigh = new_neigh(
+               neigh_index,
+               dst, 
+               route.index,
+               "00:00:00:00:00:00",
+               c.NUD.NONE
+            )
+
+            set_config(snabb_config, existing_neigh, 'routing', path, 'neighbour', tostring(neigh_index))
+         end
+
+         new = new_route(dst, tostring(existing_neigh.index))
       end
-
-      -- No neighbour already learned for this route - create a dummy
-      if not existing_neigh then
-         neigh_index = neigh_index + 1
-
-         existing_neigh = new_neigh(
-            neigh_index,
-            dst, 
-            route.index,
-            "00:00:00:00:00:00",
-            c.NUD.INCOMPLETE
-         )
-
-         set_config(snabb_config, existing_neigh, 'routing', path, 'neighbour', tostring(neigh_index))
-      end
-
-      local new = new_route(dst, tostring(existing_neigh.index))
 
       if existing_route then
          if not has_changed(existing_route, new) then
@@ -310,47 +320,9 @@ local netlink_handlers = {
    -- TODO: Inject dummy route for local IPs to cause local traffic to be routed to control
    [RTM.NEWADDR] = function(addr)
       print("[ADDR] ADD", addr)
-      if addr.family == c.AF.INET6 then
-         print('IPv6 routing not supported...')
-         return
-      end
-
-      local dst  = tostring(addr.addr) .. "/32"
-      local path = family_path[addr.family]
-
-      local existing_route = get_config(snabb_config, 'routing', path, 'route', dst)
-      
-      local new = new_route(dst, tostring(0))
-
-      if existing_route then
-         if not has_changed(existing_route, new) then
-            return
-         end
-      end
-
-      set_config(snabb_config, new, 'routing', path, 'route', dst)
-      return true
    end,
    [RTM.DELADDR] = function(addr)
       print("[ADDR] DEL", addr)
-
-      if route.family == c.AF.INET6 then
-         print('IPv6 routing not supported...')
-         return
-      end
-
-      local dst  = tostring(addr.addr) .. "/32"
-      local path = family_path[addr.family]
-
-      local existing = get_config(snabb_config, 'routing', path, 'route', dst)
-
-      if not existing then
-         print('No existing route found for ' .. dst)
-         return nil
-      end
-
-      set_config(snabb_config, nil, 'routing', path, 'route', dst)
-      return true
    end
 }
 
