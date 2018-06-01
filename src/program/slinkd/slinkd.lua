@@ -240,7 +240,7 @@ local netlink_handlers = {
       return true
    end,
    [RTM.NEWROUTE] = function(route)
-      print("[ROUTE] ADD", route)
+      print("[ROUTE] ADD", route, ' Type ', route.rtmsg.rtm_type)
 
       if route.family == c.AF.INET6 then
          print('IPv6 routing not supported...')
