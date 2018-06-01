@@ -228,7 +228,7 @@ local netlink_handlers = {
       local dst = tostring(neigh.dest)
       local path = family_path[neigh.family]
 
-      local cur_neigh   = neigh_index_map[gateway]
+      local cur_neigh   = neigh_index_map[dst]
 
       local existing = get_config(snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
 
