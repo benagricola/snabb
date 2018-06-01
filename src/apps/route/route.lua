@@ -102,6 +102,7 @@ function Route:init_v4()
       -- Add default next hop with index 0 (required! do not remove)
       self.fib_v4:add_string('0.0.0.0/0', 0)
 
+      -- Convert neighbours to integer index
       for k, v in pairs(family_v4.neighbour) do
          self.neighbours_v4[tonumber(k)] = v
       end
@@ -210,9 +211,6 @@ function Route:route_v4(p, data)
    
    -- If no neighbour found, send packet to control
    if not neighbour then
-      if self:log_timer() then
-         print('No Neighbour', neighbour_idx)
-      end
       return self:route_unknown(p)
    end
 
@@ -220,9 +218,6 @@ function Route:route_v4(p, data)
 
    -- If no interface found, send packet to control
    if not interface then
-      if self:log_timer() then
-         print('No Interface', neighbour.interface)
-      end
       return self:route_unknown(p)
    end
 

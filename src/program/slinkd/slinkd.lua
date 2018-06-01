@@ -174,7 +174,10 @@ local netlink_handlers = {
    [RTM.NEWNEIGH] = function(neigh)
       print("[NEIGH] ADD", neigh)
 
-      if not neigh.lladdr then return end
+      -- TODO: If LLADDR is nil but rest OK then this means lladdr has expired
+      -- So we want to update the neighbour anyway.
+
+      -- if not neigh.lladdr then return end
 
       local new
 
@@ -192,7 +195,6 @@ local netlink_handlers = {
 
       local index
       if existing then
-
          new = new_neigh(
             existing.index,
             dst, 
@@ -305,11 +307,50 @@ local netlink_handlers = {
       set_config(snabb_config, nil, 'routing', path, 'route', dst)
       return true
    end,
+   -- TODO: Inject dummy route for local IPs to cause local traffic to be routed to control
    [RTM.NEWADDR] = function(addr)
       print("[ADDR] ADD", addr)
+      if addr.family == c.AF.INET6 then
+         print('IPv6 routing not supported...')
+         return
+      end
+
+      local dst  = tostring(addr.addr) .. "/32"
+      local path = family_path[addr.family]
+
+      local existing_route = get_config(snabb_config, 'routing', path, 'route', dst)
+      
+      local new = new_route(dst, tostring(0))
+
+      if existing_route then
+         if not has_changed(existing_route, new) then
+            return
+         end
+      end
+
+      set_config(snabb_config, new, 'routing', path, 'route', dst)
+      return true
    end,
    [RTM.DELADDR] = function(addr)
       print("[ADDR] DEL", addr)
+
+      if route.family == c.AF.INET6 then
+         print('IPv6 routing not supported...')
+         return
+      end
+
+      local dst  = tostring(addr.addr) .. "/32"
+      local path = family_path[addr.family]
+
+      local existing = get_config(snabb_config, 'routing', path, 'route', dst)
+
+      if not existing then
+         print('No existing route found for ' .. dst)
+         return nil
+      end
+
+      set_config(snabb_config, nil, 'routing', path, 'route', dst)
+      return true
    end
 }
 
