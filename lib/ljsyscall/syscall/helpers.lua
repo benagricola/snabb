@@ -230,7 +230,10 @@ function h.multiflags(tab)
       local s = trim(v):upper()
       if #s == 0 then error("empty flag") end
       local val = rawget(tab, s)
-      if not val then error("invalid flag " .. s) end
+      if not val then 
+         print(debug.traceback())
+         error("invalid flag " .. s) 
+      end
       f = bit.bor(f, val)
     end
     cache[str] = f

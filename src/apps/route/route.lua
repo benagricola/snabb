@@ -203,6 +203,7 @@ function Route:route_v4(p, data)
    local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
    if not neighbour_idx or neighbour_idx == 0 then
+      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no route')
       return self:route_unknown(p)
    end
 
@@ -211,6 +212,7 @@ function Route:route_v4(p, data)
    
    -- If no neighbour found, send packet to control
    if not neighbour then
+      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no neighbour')
       return self:route_unknown(p)
    end
 
@@ -218,6 +220,7 @@ function Route:route_v4(p, data)
 
    -- If no interface found, send packet to control
    if not interface then
+      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no interface')
       return self:route_unknown(p)
    end
 
@@ -231,6 +234,7 @@ function Route:route_v4(p, data)
    -- will cause all packets to be sent to Linux! It can be mitigated by rate-limiting
    -- upstream packets.                                            
    if ttl < 1 then
+      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to expiring TTL')
       return self:route_unknown(p)
    end
 
