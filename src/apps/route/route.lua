@@ -241,8 +241,6 @@ function Route:route_v4(p, data)
       return self:route_unknown(p)
    end
 
-   print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via gateway ' .. neighbour.address)
-   
    -- Start routing packet
    -- Rewrite SRC / DST MAC Addresses
   
@@ -264,6 +262,8 @@ function Route:route_v4(p, data)
    local ctr = self.ctr
 
    ctr['ipv4_tx'] = ctr['ipv4_tx'] + 1
+
+   print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via gateway ' .. neighbour.address .. ' (' .. ethernet:ntop(data + constants.o_ethernet_src_addr) .. ' -> ' .. ethernet:ntop(data + constants.o_ethernet_dst_addr) .. ')')
 
    -- TODO: Different interface link for IPv4 and IPv6 for separate Fragger paths
    return l_transmit(interface.link, p)
