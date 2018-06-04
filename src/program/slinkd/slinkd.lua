@@ -156,6 +156,7 @@ local netlink_handlers = {
    
       set_config(snabb_config, new, 'interfaces', 'interface', link.name)
 
+      print(common.serialize_config(snabb_config, schema_name, '/'))
       return true
    end,
    [RTM.DELLINK] = function(link)
@@ -168,7 +169,7 @@ local netlink_handlers = {
       end
 
       set_config(snabb_config, nil, 'interfaces', 'interface', link.name)
-
+      print(common.serialize_config(snabb_config, schema_name, '/'))
       return true
    end,
    [RTM.NEWNEIGH] = function(neigh)
@@ -220,6 +221,7 @@ local netlink_handlers = {
       end
 
       set_config(snabb_config, new, 'routing', path, 'neighbour', tostring(new.index))
+      print(common.serialize_config(snabb_config, schema_name, '/'))
       return true
    end,
    [RTM.DELNEIGH] = function(neigh)
@@ -237,6 +239,7 @@ local netlink_handlers = {
       end
 
       set_config(snabb_config, nil, 'routing', path, 'neighbour', existing.index)
+      print(common.serialize_config(snabb_config, schema_name, '/'))
       return true
    end,
    [RTM.NEWROUTE] = function(route)
@@ -294,6 +297,7 @@ local netlink_handlers = {
       end
 
       set_config(snabb_config, new, 'routing', path, 'route', dst)
+      print(common.serialize_config(snabb_config, schema_name, '/'))
       return true
    end,
    [RTM.DELROUTE] = function(route)
@@ -315,6 +319,7 @@ local netlink_handlers = {
       end
 
       set_config(snabb_config, nil, 'routing', path, 'route', dst)
+      print(common.serialize_config(snabb_config, schema_name, '/'))
       return true
    end,
 }
