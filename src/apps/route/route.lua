@@ -42,7 +42,10 @@ Route = {
    config = {
       interfaces    = {},
       hardware      = {},
-      routing       = {}
+      routing       = {},
+      debug         = {
+         default = false,
+      }
    }
 }
 
@@ -53,7 +56,7 @@ function Route:new(config)
       config               = config,
       fib_v4               = nil,
       fib_v6               = nil,
-      debug                = false,
+      debug                = config.debug,
       neighbours_v4        = {}, -- Default empty cltable
       neighbours_v6        = {}, -- Default empty cltable
       sync_timer           = lib.throttle(1),
