@@ -22,6 +22,7 @@ local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
 
 local l3_offset = constants.ethernet_header_size
 
+local o_ipv4_src_addr = l3_offset + constants.o_ipv4_src_addr
 local o_ipv4_dst_addr = l3_offset + constants.o_ipv4_dst_addr
 local o_ipv4_ttl      = l3_offset + constants.o_ipv4_ttl
 local o_ipv4_checksum = l3_offset + constants.o_ipv4_checksum
@@ -206,6 +207,8 @@ function Route:route_v4(p, data)
       print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no route')
       return self:route_unknown(p)
    end
+
+   print(ipv4:ntop(data + o_ipv4_src_addr) .. ' -> ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' -> ' .. tostring(neighbour_idx))
 
    -- If route found, resolve neighbour
    local neighbour = self.neighbours_v4[neighbour_idx]
