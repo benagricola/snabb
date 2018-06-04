@@ -244,8 +244,8 @@ function Route:route_v4(p, data)
    -- Start routing packet
    -- Rewrite SRC / DST MAC Addresses
   
-   ffi_copy(data + constants.o_ethernet_src_addr, interface.config.mac, 6)
-   ffi_copy(data + constants.o_ethernet_dst_addr, neighbour.mac, 6)
+   ffi_copy(data + constants.o_ethernet_src_addr, ethernet:pton(interface.config.mac), 6)
+   ffi_copy(data + constants.o_ethernet_dst_addr, ethernet:pton(neighbour.mac), 6)
 
    -- Rewrite TTL field
    data[o_ipv4_ttl] = ttl - 1
