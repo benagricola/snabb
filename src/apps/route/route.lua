@@ -13,6 +13,7 @@ local ipv4      = require("lib.protocol.ipv4")
 local link      = require('core.link')
 local packet    = require('core.packet')
 
+-- Confusing naming, maybe fix this
 local C = ffi.C
 
 local ffi_copy, ffi_cast   = ffi.copy, ffi.cast
@@ -217,7 +218,7 @@ function Route:route_v4(p, data)
    
    -- If no neighbour found, send packet to control
    -- If dummy neighbour (not transitioned to reachable or failed), send packet to control
-   if not neighbour or neighbour.state < C.NUD.REACHABLE or neighbour.state == C.NUD.FAILED then
+   if not neighbour or not neighbour.available then
       print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no neighbour')
       return self:route_unknown(p)
    end

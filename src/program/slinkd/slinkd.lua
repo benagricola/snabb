@@ -109,12 +109,18 @@ end
 
 local new_neigh = function(index, address, interface, mac, state)
    neigh_index_map[address] = index
+   local available = false
+   
+   if (state >= c.NUD.REACHABLE and state ~= c.NUD.FAILED) then
+      available = true
+   end
+
    return {
       index     = index,
       interface = interface,
       address   = address,
       mac       = mac,
-      state     = state,
+      available = available,
    }
 end
 
@@ -134,6 +140,8 @@ local new_link = function(index, name, mac, mtu, up)
       mtu   = mtu,
    }
 end
+
+
 
 local netlink_handlers = {
    [RTM.NEWLINK] = function(link)
