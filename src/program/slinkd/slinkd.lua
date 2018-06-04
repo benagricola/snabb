@@ -94,11 +94,12 @@ local update_config = function()
          path=xpath,
          config = config,
       },
-      callback = function(cb)
-         local res = cb()
-         print(res)
-         if type(res) == 'table' then
-            for k, v in pairs(res) do
+      callback = function(parse_reply, msg)
+         local cfg = parse_reply(mem.open_input_string(msg))
+
+         print(cfg)
+         if type(cfg) == 'table' then
+            for k, v in pairs(cfg) do
                print(k, v)
             end
          end
