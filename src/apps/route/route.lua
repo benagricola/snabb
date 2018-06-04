@@ -129,6 +129,7 @@ end
 function Route:add_v4_route(dst, route)
    -- LPM for fast routing lookup once a neighbour is identified
 
+   print("Adding route " .. dst .. ' via ' .. route.gateway)
    -- Add route with no connected next-hop (neigh)
    self.fib_v4:add_string(dst, tonumber(route.gateway))
 end
@@ -144,6 +145,7 @@ function Route:build_v4_route()
       local start_ns = tonumber(C.get_time_ns())
       self.fib_v4:build()
       print('Built v4 routing table in ' .. ((tonumber(C.get_time_ns()) - start_ns)/1e6) ..'ms...')
+      self.fib_v4:print_entries()
    end
 end
 
