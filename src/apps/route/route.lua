@@ -217,7 +217,7 @@ function Route:route_v4(p, data)
    
    -- If no neighbour found, send packet to control
    -- If dummy neighbour (not transitioned to reachable or failed), send packet to control
-   if not neighbour or neighbour.state < c.NUD.REACHABLE or neighbour.state == c.NUD.FAILED then
+   if not neighbour or neighbour.state < C.NUD.REACHABLE or neighbour.state == C.NUD.FAILED then
       print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no neighbour')
       return self:route_unknown(p)
    end
