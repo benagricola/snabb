@@ -86,7 +86,6 @@ end
 local update_config = function()
    local xpath = '/'
    local config = common.serialize_config(snabb_config, schema_name, xpath)
-   print(config)
    return { 
       method = 'set-config',
       args = { 
@@ -94,14 +93,11 @@ local update_config = function()
          path=xpath,
          config = config,
       },
+      -- Error out on failure to set config
       callback = function(parse_reply, msg)
-         local cfg = parse_reply(mem.open_input_string(msg))
-
-         print(cfg)
-         if type(cfg) == 'table' then
-            for k, v in pairs(cfg) do
-               print(k, v)
-            end
+         local ret = parse_reply(mem.open_input_string(msg))
+         if ret.status ~= 0 then
+            error('Unable to update dataplane config: ' .. ret.error)
          end
       end
    }
