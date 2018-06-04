@@ -94,7 +94,8 @@ local update_config = function()
          path=xpath,
          config = config,
       },
-      callback = function(res)
+      callback = function(cb)
+         local res = cb()
          print(res)
          if type(res) == 'table' then
             for k, v in pairs(res) do
