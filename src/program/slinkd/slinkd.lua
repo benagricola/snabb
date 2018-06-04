@@ -35,10 +35,11 @@ require('lib.stream.compat').install()
 local schema_name = 'snabb-router-v1'
 
 -- DO NOT CHANGE
--- This means 'dynamic' neighbours start at 2
+-- This means 'dynamic' neighbours start at 3
 -- Neighbour 1 means 'send to control' and does not exist
+-- Neighbour 2 means 'blackhole' and does not exist
 -- Neighbour 0 does not work, this is used internally by the LPM libraries
-local neigh_index     = 1
+local neigh_index     = 2
 
 local neigh_index_map = {
 
@@ -291,7 +292,8 @@ local netlink_handlers = {
          return
       end
 
-      local local_route = route.rtmsg.rtm_type == c.RTN.LOCAL
+      local local_route     = route.rtmsg.rtm_type == c.RTN.LOCAL
+      local blackhole_route = route.rtmsg.rtm_type == c.RTN.BLACKHOLE
 
 
       local gateway     = tostring(route.gw)
@@ -305,9 +307,13 @@ local netlink_handlers = {
       
       local new
 
+      local idx
+
       -- Send local routes to control
       if local_route then
-         new = new_route(dst, tostring(1))
+         idx = 1
+      elseif blackhole_route then
+         idx = 2
       else
          if cur_neigh then
             existing_neigh = get_config(snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
@@ -328,8 +334,10 @@ local netlink_handlers = {
             set_config(snabb_config, existing_neigh, 'routing', path, 'neighbour', tostring(neigh_index))
          end
 
-         new = new_route(dst, tostring(existing_neigh.index))
+         idx = existing_neigh.index
       end
+
+      new = new_route(dst, tostring(idx))
 
       if existing_route then
          if not has_changed(existing_route, new) then

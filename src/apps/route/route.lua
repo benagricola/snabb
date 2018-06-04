@@ -31,6 +31,9 @@ local o_ipv4_checksum = l3_offset + constants.o_ipv4_checksum
 local uint32_t = ffi.typeof('uint32_t')
 local uint32_ptr_t = ffi.typeof("$*", uint32_t)
 
+local neigh_local     = 1
+local neigh_blackhole = 2
+
 
 local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwritable
 local p_free = packet.free
@@ -185,7 +188,7 @@ function Route:sync_counters()
 end
 
 -- Forward all unknown packets to control interface
-function Route:route_unknown(p, data)
+function Route:route_unknown(p)
    local ctr  = self.ctr
    local ctrl = self.output.control
 
@@ -199,18 +202,33 @@ function Route:route_unknown(p, data)
    return l_transmit(ctrl, p)
 end
 
+function Route:drop(p)
+   local ctr  = self.ctr
+
+   ctr['drop'] = ctr['drop'] + 1
+   return p_free(p)
+end
+
 -- ARP Neighbour state: https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
 
 function Route:route_v4(p, data)
 
    local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
-   if not neighbour_idx or neighbour_idx == 1 then
+   if not neighbour_idx or neighbour_idx == neigh_local then
       if self.debug and self:debug_timer() then
          print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no route')
       end
       return self:route_unknown(p)
    end
+
+   if neighbour_idx == neigh_blackhole then
+      if self.debug and self:debug_timer() then
+         print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' to blackhole')
+      end
+      return self:drop(p)
+   end
+
 
    -- If route found, resolve neighbour
    local neighbour = self.neighbours_v4[neighbour_idx]
