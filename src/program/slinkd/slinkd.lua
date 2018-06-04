@@ -285,7 +285,7 @@ local netlink_handlers = {
 
             existing_neigh = new_neigh(
                neigh_index,
-               dst, 
+               gateway, 
                route.index,
                "00:00:00:00:00:00",
                c.NUD.NONE
