@@ -196,6 +196,8 @@ function Route:route_unknown(p, data)
    return l_transmit(ctrl, p)
 end
 
+-- ARP Neighbour state: https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
+
 function Route:route_v4(p, data)
    -- Assume that no 'local' routes are installed
    -- If this is the case, we might try to forward packets
@@ -214,7 +216,8 @@ function Route:route_v4(p, data)
    local neighbour = self.neighbours_v4[neighbour_idx]
    
    -- If no neighbour found, send packet to control
-   if not neighbour then
+   -- If dummy neighbour (not transitioned to reachable or failed), send packet to control
+   if not neighbour or neighbour.state < c.NUD.REACHABLE or neighbour.state == c.NUD.FAILED then
       print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no neighbour')
       return self:route_unknown(p)
    end
@@ -243,7 +246,6 @@ function Route:route_v4(p, data)
 
    -- Start routing packet
    -- Rewrite SRC / DST MAC Addresses
-   print(ethernet:pton(neighbour.mac))
    ffi_copy(data + constants.o_ethernet_src_addr, ethernet:pton(interface.config.mac), 6)
    ffi_copy(data + constants.o_ethernet_dst_addr, ethernet:pton(neighbour.mac), 6)
 
