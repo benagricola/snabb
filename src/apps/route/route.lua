@@ -243,7 +243,7 @@ function Route:route_v4(p, data)
 
    -- Start routing packet
    -- Rewrite SRC / DST MAC Addresses
-  
+   print(ethernet:pton(neighbour.mac))
    ffi_copy(data + constants.o_ethernet_src_addr, ethernet:pton(interface.config.mac), 6)
    ffi_copy(data + constants.o_ethernet_dst_addr, ethernet:pton(neighbour.mac), 6)
 
@@ -257,7 +257,7 @@ function Route:route_v4(p, data)
    sum = lib.htons(sum + bit.rshift(sum, 16))
    sum = lib.htons(sum + bit.rshift(sum, 16))
 
-   chksum[0] = sum
+   chksum[0] = lib.htons(sum)
 
    local ctr = self.ctr
 
