@@ -254,10 +254,8 @@ function Route:route_v4(p, data)
 
    -- Recalculate checksum based on updated TTL
    local sum = lib.ntohs(chksum[0]) + 0x100
-   sum = lib.htons(sum + bit.rshift(sum, 16))
-   sum = lib.htons(sum + bit.rshift(sum, 16))
-
-   chksum[0] = lib.htons(sum)
+   sum = sum + bit.rshift(sum, 16)
+   chksum[0] = lib.htons(sum + bit.rshift(sum, 16))
 
    local ctr = self.ctr
 
