@@ -53,12 +53,13 @@ function Route:new(config)
       config               = config,
       fib_v4               = nil,
       fib_v6               = nil,
+      debug                = false,
       neighbours_v4        = {}, -- Default empty cltable
       neighbours_v6        = {}, -- Default empty cltable
       sync_timer           = lib.throttle(1),
       v4_build_timer       = lib.throttle(1),
       v6_build_timer       = lib.throttle(1),
-      log_timer            = lib.throttle(0.1),
+      debug_timer          = lib.throttle(0.1),
       ctr_names            = {
          'ipv4_rx',
          'ipv6_rx',
@@ -141,7 +142,6 @@ end
 
 function Route:build_v4_route()
    if self:v4_build_timer() then
-      print('Building v4 routing table...')
       local start_ns = tonumber(C.get_time_ns())
       self.fib_v4:build()
       print('Built v4 routing table in ' .. ((tonumber(C.get_time_ns()) - start_ns)/1e6) ..'ms...')
@@ -150,7 +150,6 @@ end
 
 function Route:build_v6_route()
    if self:v6_build_timer() then
-      print('Building v6 routing table...')
       local start_ns = tonumber(C.get_time_ns())
       self.fib_v6:build()
       print('Built v6 routing table in ' .. ((tonumber(C.get_time_ns()) - start_ns)/1e6) ..'ms...')
@@ -200,18 +199,15 @@ end
 -- ARP Neighbour state: https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
 
 function Route:route_v4(p, data)
-   -- Assume that no 'local' routes are installed
-   -- If this is the case, we might try to forward packets
-   -- which are aimed at a 'local' IP. TODO: Test this!
 
    local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
    if not neighbour_idx or neighbour_idx == 1 then
-      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no route')
+      if self.debug and self:debug_timer() then
+         print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no route')
+      end
       return self:route_unknown(p)
    end
-
-   print(ipv4:ntop(data + o_ipv4_src_addr) .. ' -> ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' -> ' .. tostring(neighbour_idx))
 
    -- If route found, resolve neighbour
    local neighbour = self.neighbours_v4[neighbour_idx]
@@ -219,7 +215,9 @@ function Route:route_v4(p, data)
    -- If no neighbour found, send packet to control
    -- If dummy neighbour (not transitioned to reachable or failed), send packet to control
    if not neighbour or not neighbour.available then
-      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no neighbour')
+      if self.debug and self:debug_timer() then
+         print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no neighbour')
+      end
       return self:route_unknown(p)
    end
 
@@ -227,7 +225,9 @@ function Route:route_v4(p, data)
 
    -- If no interface found, send packet to control
    if not interface then
-      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no interface')
+      if self.debug and self:debug_timer() then
+         print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no interface')
+      end
       return self:route_unknown(p)
    end
 
@@ -241,7 +241,9 @@ function Route:route_v4(p, data)
    -- will cause all packets to be sent to Linux! It can be mitigated by rate-limiting
    -- upstream packets.                                            
    if ttl < 1 then
-      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to expiring TTL')
+      if self.debug and self:debug_timer() then
+         print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to expiring TTL')
+      end
       return self:route_unknown(p)
    end
 
@@ -264,8 +266,10 @@ function Route:route_v4(p, data)
 
    ctr['ipv4_tx'] = ctr['ipv4_tx'] + 1
 
-   print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via gateway ' .. neighbour.address .. ' (' .. ethernet:ntop(data + constants.o_ethernet_src_addr) .. ' -> ' .. ethernet:ntop(data + constants.o_ethernet_dst_addr) .. ')')
-
+   if self.debug and self:debug_timer() then
+      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via gateway ' .. neighbour.address .. ' (' .. ethernet:ntop(data + constants.o_ethernet_src_addr) .. ' -> ' .. ethernet:ntop(data + constants.o_ethernet_dst_addr) .. ')')
+   end
+   
    -- TODO: Different interface link for IPv4 and IPv6 for separate Fragger paths
    return l_transmit(interface.link, p)
 end
