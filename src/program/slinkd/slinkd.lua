@@ -34,7 +34,11 @@ require('lib.stream.compat').install()
 
 local schema_name = 'snabb-router-v1'
 
-local neigh_index     = 0
+-- DO NOT CHANGE
+-- This means 'dynamic' neighbours start at 2
+-- Neighbour 1 means 'send to control' and does not exist
+-- Neighbour 0 does not work, this is used internally by the LPM libraries
+local neigh_index     = 1
 
 local neigh_index_map = {
 
@@ -269,7 +273,7 @@ local netlink_handlers = {
 
       -- Send local routes to control
       if local_route then
-         new = new_route(dst, tostring(0))
+         new = new_route(dst, tostring(1))
       else
          if cur_neigh then
             existing_neigh = get_config(snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))

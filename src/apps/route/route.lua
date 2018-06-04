@@ -205,7 +205,7 @@ function Route:route_v4(p, data)
 
    local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
-   if not neighbour_idx or neighbour_idx == 0 then
+   if not neighbour_idx or neighbour_idx == 1 then
       print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no route')
       return self:route_unknown(p)
    end
