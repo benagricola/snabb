@@ -205,6 +205,8 @@ local netlink_handlers = {
 
       local existing
 
+      -- TODO: Insert a new route for locally learned neighbours? 
+
       local cur_neigh = neigh_index_map[dst]
 
       if cur_neigh then
@@ -212,6 +214,7 @@ local netlink_handlers = {
       end
 
       local index
+
       if existing then
          new = new_neigh(
             existing.index,
@@ -238,6 +241,21 @@ local netlink_handlers = {
       end
 
       set_config(snabb_config, new, 'routing', path, 'neighbour', tostring(new.index))
+
+      -- Create new route for this directly connected system
+      local rt_dst = dst .. "/32"
+      print(rt_dst, tostring(new.index))
+      local new_route = new_route(rt_dst, tostring(new.index))
+
+      local existing_route = get_config(snabb_config, 'routing', path, 'route', rt_dst)
+
+      if existing_route then
+         if not has_changed(existing_route, new_route) then
+            return true
+         end
+      end
+
+      set_config(snabb_config, new_route, 'routing', path, 'route', rt_dst)
       return true
    end,
    [RTM.DELNEIGH] = function(neigh)
@@ -252,6 +270,14 @@ local netlink_handlers = {
 
       if not existing then
          return nil
+      end
+
+      local rt_dst = dst .. "/32"
+
+      local existing_route = get_config(snabb_config, 'routing', path, 'route', rt_dst)
+
+      if existing_route then
+         set_config(snabb_config, nil, 'routing', path, 'route', rt_dst)
       end
 
       set_config(snabb_config, nil, 'routing', path, 'neighbour', existing.index)
