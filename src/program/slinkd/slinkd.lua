@@ -317,13 +317,6 @@ local netlink_handlers = {
       set_config(snabb_config, nil, 'routing', path, 'route', dst)
       return true
    end,
-   -- TODO: Inject dummy route for local IPs to cause local traffic to be routed to control
-   [RTM.NEWADDR] = function(addr)
-      print("[ADDR] ADD", addr)
-   end,
-   [RTM.DELADDR] = function(addr)
-      print("[ADDR] DEL", addr)
-   end
 }
 
 local function attach_listener(leader, caller, schema_name, revision_date)
@@ -349,8 +342,9 @@ function run(args)
    local ok, nlsock = pcall(socket.connect_netlink, "ROUTE", {
       "LINK",
       "NEIGH",
-      "IPV4_IFADDR",
-      "IPV6_IFADDR",
+      -- We don't need local IPaddr info right now
+      -- "IPV4_IFADDR",
+      -- "IPV6_IFADDR",
       "IPV4_ROUTE",
       "IPV6_ROUTE"
    })
@@ -377,14 +371,14 @@ function run(args)
    -- nlmsg    (ntype, flags, af, ...)
    -- nl.write (sock, dest, ntype, flags, af, ...)
    local netlink_dump_reqs = {
-      { c.RTM.GETLINK, rdump_flags, nil, t.rtgenmsg, { rtgen_family = c.AF.PACKET } },
-      { c.RTM.GETNEIGH, rdump_flags, nil, t.ndmsg, t.ndmsg() },
-      -- V4
-      { c.RTM.GETADDR, rdump_flags, c.AF.INET, t.ifaddrmsg, { ifa_family = c.AF.INET } },
-      { c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } },
+      { c.RTM.GETLINK, rdump_flags, nil, t.rtgenmsg, { rtgen_family = c.AF.PACKET } }, -- Get Links
+      { c.RTM.GETNEIGH, rdump_flags, nil, t.ndmsg, t.ndmsg() },                        -- Get Neighbours
 
-      { c.RTM.GETROUTE, rroot_flags, c.AF.INET, t.rtmsg, t.rtmsg{ family = c.AF.INET, type = c.RTN.UNICAST } },
-      { c.RTM.GETROUTE, rroot_flags, c.AF.INET6, t.rtmsg, t.rtmsg{ family = c.AF.INET6, type = c.RTN.UNICAST } },
+      --{ c.RTM.GETADDR, rdump_flags, c.AF.INET, t.ifaddrmsg, { ifa_family = c.AF.INET } },   -- Get IPv4 Addrs
+      --{ c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } }, -- Get IPv6 Addrs
+
+      { c.RTM.GETROUTE, rroot_flags, c.AF.INET, t.rtmsg, t.rtmsg{ family = c.AF.INET, type = c.RTN.UNICAST } },   -- Get IPv4 Routes
+      { c.RTM.GETROUTE, rroot_flags, c.AF.INET6, t.rtmsg, t.rtmsg{ family = c.AF.INET6, type = c.RTN.UNICAST } }, -- Get IPv6 Routes
    }
 
    -- Ask for netlink dump on slinkd start
