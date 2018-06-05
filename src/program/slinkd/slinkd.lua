@@ -41,9 +41,9 @@ local schema_name = 'snabb-router-v1'
 -- Neighbour 0 does not work, this is used internally by the LPM libraries
 local neigh_index     = 2
 
-local neigh_index_map = {
+local neigh_index_map = {}
 
-}
+local link_index_map = {}
 
 local family_path = {
    [c.AF.INET]  = 'family_v4',
@@ -175,6 +175,7 @@ local netlink_handlers = {
       end
    
       set_config(snabb_config, new, 'interfaces', 'interface', link.name)
+      link_index_map[link.index] = link.name
 
       return true
    end,
@@ -188,6 +189,7 @@ local netlink_handlers = {
       end
 
       set_config(snabb_config, nil, 'interfaces', 'interface', link.name)
+      link_index_map[link.index] = nil
       return true
    end,
    [RTM.NEWNEIGH] = function(neigh)
@@ -195,6 +197,9 @@ local netlink_handlers = {
 
       -- TODO: If LLADDR is nil but rest OK then this means lladdr has expired
       -- So we want to update the neighbour anyway.
+
+      local link = link_index_map[neigh.ifindex]
+      if not link then return end
 
       -- if not neigh.lladdr then return end
 
@@ -292,8 +297,14 @@ local netlink_handlers = {
          return
       end
 
+      if route.rtmsg.rtm_type == c.RTN.BROADCAST or route.rtmsg.rtm_type == c.RTN.MULTICAST then
+         return
+      end
+      
       local local_route     = route.rtmsg.rtm_type == c.RTN.LOCAL
-      local blackhole_route = route.rtmsg.rtm_type == c.RTN.BLACKHOLE
+
+      -- TODO: Handle prohibit correctly
+      local blackhole_route = (route.rtmsg.rtm_type == c.RTN.BLACKHOLE or route.rtmsg.rtm_type == c.RTN.PROHIBIT)
 
 
       local gateway     = tostring(route.gw)
@@ -424,7 +435,7 @@ function run(args)
    -- nl.write (sock, dest, ntype, flags, af, ...)
    local netlink_dump_reqs = {
       { c.RTM.GETLINK, rdump_flags, nil, t.rtgenmsg, { rtgen_family = c.AF.PACKET } }, -- Get Links
-      { c.RTM.GETNEIGH, rdump_flags, nil, t.ndmsg, t.ndmsg{ family = c.AF.INET } },                        -- Get Neighbours
+      { c.RTM.GETNEIGH, rdump_flags, c.AF.INET, t.ndmsg, t.ndmsg{ family = c.AF.INET } },    -- Get Neighbours
 
       --{ c.RTM.GETADDR, rdump_flags, c.AF.INET, t.ifaddrmsg, { ifa_family = c.AF.INET } },   -- Get IPv4 Addrs
       --{ c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } }, -- Get IPv6 Addrs
