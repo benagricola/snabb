@@ -424,7 +424,7 @@ function run(args)
    -- nl.write (sock, dest, ntype, flags, af, ...)
    local netlink_dump_reqs = {
       { c.RTM.GETLINK, rdump_flags, nil, t.rtgenmsg, { rtgen_family = c.AF.PACKET } }, -- Get Links
-      { c.RTM.GETNEIGH, rdump_flags, nil, t.ndmsg, t.ndmsg() },                        -- Get Neighbours
+      { c.RTM.GETNEIGH, rdump_flags, nil, t.ndmsg, t.ndmsg{ family = c.AF.INET } },                        -- Get Neighbours
 
       --{ c.RTM.GETADDR, rdump_flags, c.AF.INET, t.ifaddrmsg, { ifa_family = c.AF.INET } },   -- Get IPv4 Addrs
       --{ c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } }, -- Get IPv6 Addrs

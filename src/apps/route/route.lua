@@ -154,6 +154,7 @@ function Route:build_v4_route()
    end
 end
 
+-- https://github.com/rmind/liblpm ?
 function Route:build_v6_route()
    if self:v6_build_timer() then
       local start_ns = tonumber(C.get_time_ns())
@@ -253,13 +254,14 @@ function Route:route_v4(p, data)
    end
 
    -- At this point we know we need to forward the packet (rather than send to control)
+   -- And where to.
    -- Validate it:
    local ttl = data[o_ipv4_ttl]
 
    -- Forward packets with 0 TTL to control
    -- TODO: Maybe fix this to process in-snabb. This is a potential DoS vuln
    -- A DDoS with the TTL set correctly (i.e. so it is 0 when it hits this node)
-   -- will cause all packets to be sent to Linux! It can be mitigated by rate-limiting
+   -- will cause all packets to be sent to Linux! It can be mitigated somewhat by rate-limiting
    -- upstream packets.                                            
    if ttl < 1 then
       if self.debug and self:debug_timer() then
