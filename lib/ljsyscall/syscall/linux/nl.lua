@@ -542,8 +542,9 @@ local function decode_route(buf, len)
     if rta_decode[rtattr.rta_type] then
       rta_decode[rtattr.rta_type](ir, buf + rta_length(0), rta_align(rtattr.rta_len) - rta_length(0))
     else 
-      print("NYI: " .. rtattr.rta_type)
-      print(rtattr)
+      if false then
+         print("NYI: " .. rtattr.rta_type)
+      end
     end
     rtattr, buf, len = rta_next(rtattr, buf, len)
   end

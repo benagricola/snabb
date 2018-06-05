@@ -28,7 +28,8 @@ local shm         = require("core.shm")
 local alarms      = require("lib.yang.alarms")
 local S           = require("syscall")
 
-local CallbackAlarm = alarms.CallbackAlarm
+local CallbackAlarm     = alarms.CallbackAlarm
+local CallbackRateAlarm = alarms.CallbackRateAlarm
 local transmit, receive, empty = link.transmit, link.receive, link.empty
 
 -- It's not clear what address to use for EEMNGCTL_i210 DPDK PMD / linux e1000
@@ -283,6 +284,7 @@ FACTPS	  0x05B30 -            Function Active and Power State to MNG
 Intel = {
    config = {
       pciaddr = {required=true},
+      alias = {},
       ring_buffer_size = {default=2048},
       vmdq = {default=false},
       vmdq_queuing_mode = {default="rss-64-2"},
@@ -321,6 +323,7 @@ driver = Intel
 function Intel:new (conf)
    local self = {
       r = {},
+      alias = conf.alias,
       pciaddress = conf.pciaddr,
       path = pci.path(conf.pciaddr),
       ndesc = conf.ring_buffer_size,
@@ -431,7 +434,7 @@ function Intel:new (conf)
          alarm_text='Ingress bandwith exceeds 1e9 bytes/s which can cause packet drops.'
       }
    }
-   self.ingress_bandwith_alarm = CallbackAlarm.new(ingress_bandwith,
+   self.ingress_bandwith_alarm = CallbackRateAlarm.new(ingress_bandwith,
       1, 1e9, function() return self:rxbytes() end)
 
    alarms.add_to_inventory {
@@ -447,8 +450,31 @@ function Intel:new (conf)
          alarm_text='Ingress packet-rate exceeds 2MPPS which can cause packet drops.'
       }
    }
-   self.ingress_packet_rate_alarm = CallbackAlarm.new(ingress_packet_rate,
+   self.ingress_packet_rate_alarm = CallbackRateAlarm.new(ingress_packet_rate,
       1, 2e6, function() return self:rxpackets() end)
+
+
+   if self.master then
+      alarms.add_to_inventory {
+         [{alarm_type_id='phy-down'}] = {
+            resource=self.pciaddress, 
+            has_clear=true,
+            description='Interface is down',
+         }
+      }
+      local phy_down_state = alarms.declare_alarm {
+         [{resource=self.pciaddress,alarm_type_id='phy-down'}] = {
+            perceived_severity='major',
+            alarm_text='Interface is down',
+            alt_resource={self.alias},
+         }
+      }
+      self.phy_down_state_alarm = CallbackAlarm.new(phy_down_state,
+         1, function()
+            -- Alarm is not active when link is active
+            return not self:link_status()
+         end)
+   end
 
    return self
 end
@@ -693,6 +719,10 @@ function Intel:pull ()
    -- Sync device statistics if we are master.
    if self.run_stats and self.sync_timer() then
       self:sync_stats()
+   end
+
+   if self.master and pkts < 1 then
+      self.phy_down_state_alarm:check()
    end
 end
 

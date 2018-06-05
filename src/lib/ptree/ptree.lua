@@ -222,12 +222,12 @@ end
 function Manager:handle_notification_peer(peer)
    local q = queue.new()
    self.notification_peers[q] = true
-   function q:close()
+   function q.close()
       self.notification_peers[q] = nil
       peer:close()
    end
    self:call_with_cleanup(q, function()
-      while true do
+      while true do  
          json.write_json_object(peer, q:get())
          peer:write_chars("\n")
          peer:flush_output()

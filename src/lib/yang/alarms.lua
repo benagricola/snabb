@@ -43,6 +43,10 @@ function notifications ()
    local ret = {}
    local notifications = state.notifications
    for k,v in pairs(notifications.alarm) do
+      -- TODO: Improve JSON encode / decode to support nested tables
+      if type(v.alt_resource) == 'table' then
+         v.alt_resource = table.concat(v.alt_resource, ',')
+      end
       table.insert(ret, v)
    end
    for k,v in pairs(notifications.alarm_inventory_changed) do
@@ -348,11 +352,20 @@ end
 -- status change is added to the alarm.
 local function new_alarm (key, args)
    local ret = assert(alarm_list:retrieve(key, args), 'Not supported alarm')
+
+   local alt_resource = args.alt_resource or ret.alt_resource or {}
+   assert(type(alt_resource) == "table")
+
    local status = {
       time = format_date_as_iso_8601(),
       perceived_severity = args.perceived_severity or ret.perceived_severity,
       alarm_text = args.alarm_text or ret.alarm_text,
+      resource      = key.resource,
+      alarm_type_id = key.alarm_type_id,
+      alarm_type_qualifier = key.alarm_type_qualifier,
+      alt_resource = alt_resource,
    }
+
    add_status_change(key, ret, status)
    ret.last_changed = assert(status.time)
    ret.time_created = assert(ret.last_changed)
@@ -389,10 +402,17 @@ end
 -- flag.
 local function update_alarm (key, alarm, args)
    if needs_status_change(alarm, args) then
+      local alt_resource = args.alt_resource or alarm.alt_resource or {}
+      assert(type(alt_resource) == "table")
+
       local status = {
          time = assert(format_date_as_iso_8601()),
          perceived_severity = assert(args.perceived_severity or alarm.perceived_severity),
          alarm_text = assert(args.alarm_text or alarm.alarm_text),
+         resource      = key.resource,
+         alarm_type_id = key.alarm_type_id,
+         alarm_type_qualifier = key.alarm_type_qualifier,
+         alt_resource = alt_resource,
       }
       add_status_change(key, alarm, status)
       alarm.is_cleared = args.is_cleared
@@ -669,7 +689,7 @@ function compress_alarms (key)
    return count
 end
 
-local Alarm = {}
+local Alarm = { value = 0 }
 Alarm.__index={Alarm}
 
 function Alarm:check ()
@@ -677,10 +697,13 @@ function Alarm:check ()
       self.next_check = engine.now() + self.period
       self.last_value = self:get_value()
    elseif self.next_check < engine.now() then
+      -- returns true (alarm violated), false (alarm cleared),
+      -- or nil (alarm state not changed)
       local value = self:get_value()
-      if (value - self.last_value > self.limit) then
+      local state = self:is_active(value)
+      if state == true then
          self.alarm:raise()
-      else
+      elseif state == false then
          self.alarm:clear()
       end
       self.next_check = engine.now() + self.period
@@ -688,22 +711,49 @@ function Alarm:check ()
    end
 end
 
+function Alarm:get_value()
+   return self.value
+end
+
+-- returns true (alarm violated), false (alarm cleared), and nil (alarm state not changed)
+-- Default returns value if it has changed
+function Alarm:is_active(value)
+   if self.last_value ~= value then
+      return value
+   end
+   return nil
+end
+
+
 CallbackAlarm = {}
 
-function CallbackAlarm.new (alarm, period, limit, expr)
+function CallbackAlarm.new (alarm, period, expr)
    assert(type(expr) == 'function')
-   return setmetatable({alarm=alarm, period=period, limit=limit, expr=expr},
+   return setmetatable({alarm=alarm, period=period, expr=expr},
       {__index = setmetatable(CallbackAlarm, {__index=Alarm})})
 end
 function CallbackAlarm:get_value()
    return self.expr()
 end
 
+
+CallbackRateAlarm = {}
+
+function CallbackRateAlarm.new (alarm, period, limit, expr)
+   assert(type(expr) == 'function')
+   return setmetatable({alarm=alarm, period=period, limit=limit, expr=expr},
+      {__index = setmetatable(CallbackRateAlarm, {__index=CallbackAlarm})})
+end
+function CallbackRateAlarm:is_active(value)
+   return (value - self.last_value > self.limit)
+end
+
+
 CounterAlarm = {}
 
 function CounterAlarm.new (alarm, period, limit, object, counter_name)
    return setmetatable({alarm=alarm, period=period, limit=limit,  object=object,
-      counter_name=counter_name}, {__index = setmetatable(CounterAlarm, {__index=Alarm})})
+      counter_name=counter_name}, {__index = setmetatable(CounterAlarm, {__index=CallbackRateAlarm})})
 end
 function CounterAlarm:get_value()
    return counter.read(self.object.shm[self.counter_name])
@@ -729,6 +779,7 @@ function selftest ()
    do_add_to_inventory({alarm_type_id='arp-resolution'}, {
       resource='nic-v4',
       has_clear=true,
+      alt_resource={'nic-v4-2'},
       description='Raise up if ARP app cannot resolve IP address',
    })
    do_declare_alarm({resource='nic-v4', alarm_type_id='arp-resolution'}, {

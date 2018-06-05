@@ -1162,6 +1162,16 @@ c.RTA = strflag {
   MP_ALGO = 14,
   TABLE = 15,
   MARK = 16,
+  MFC_STATS = 17,
+  VIA = 18,
+  NEWDST = 19,
+  PREF = 20,
+  ENCAP_TYPE = 21,
+  ENCAP = 22,
+  EXPIRES = 23,
+  PAD = 24,
+  UID = 25,
+  TTL_PROPAGATE = 26,
 }
 
 -- route flags
