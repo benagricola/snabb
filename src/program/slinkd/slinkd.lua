@@ -31,6 +31,7 @@ local t           = S.t
 local RTM         = c.RTM
 local rdump_flags = c.NLM_F('request', 'dump')
 local rroot_flags = c.NLM_F('request', 'root')
+local rupda_flags = c.NLM_F('request')
 
 local schema_name = 'snabb-router-v1'
 
@@ -379,9 +380,18 @@ local alarm_handlers = {
          return print('Alarm notification for unknown interface ', alarm.resource, '/', alarm.alt_resource)
       end
 
-      local new_state = interface.lower_up and 'down' else 'up'
+      local new_state = interface.lower_up and '' or 'lower_up' 
+
+      -- Toggle interface status
+      interface.lower_up = not interface.lower_up
 
       print("[ALARM] PHY ", new_state:upper(), interface.name, ' ', alarm.time)
+      set_config(snabb_config, interface, 'interfaces', 'interface', interface.name)
+
+      -- nl.newlink(i,         0,  flags, change or c.IFF.ALL)
+      -- nl.newlink(index, flags, iflags, change, ...)
+
+      return { c.RTM.NEWLINK, rupda_flags, nil, t.ifinfomsg, { ifi_index = interface.index, ifi_flags = c.IFF[new_state], ifi_change = c.IFF['lower_up'] } }
    end,
 }
 
@@ -559,7 +569,11 @@ function run(args)
    local function handle_pending_netlink_requests()
       while true do
          local nt = pending_netlink_requests:get()
-         nl.write(nlsock, nil, unpack(nt))
+         local ok, err = nl.write(nlsock, nil, unpack(nt))
+
+         if not ok then
+            error('Unable to write to netlink socket: ', err)
+         end
       end
    end
 
