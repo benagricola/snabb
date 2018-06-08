@@ -143,14 +143,14 @@ local new_route = function(dst, gateway)
    }
 end
 
-local new_link = function(index, name, mac, mtu, up, lower_up)
+local new_link = function(index, name, mac, mtu, up, state)
    return {
       index    = index,
       name     = name,
       mac      = mac,
       mtu      = mtu,
       up       = up,
-      lower_up = lower_up,
+      state    = state,
    }
 end
 
@@ -172,7 +172,7 @@ local netlink_handlers = {
          tostring(link.macaddr),
          link.mtu + 14,
          link.flags[c.IFF.UP],
-         link.flags[c.IFF.LOWER_UP]
+         link.operstate
       )
    
       local existing = get_config(snabb_config, 'interfaces', 'interface', link.name)
@@ -290,11 +290,12 @@ local netlink_handlers = {
       return true
    end,
    [RTM.NEWROUTE] = function(route)
+      print("[ROUTE] ADD", route, ' Type ', route.rtmsg.rtm_type)
+
       if route.family == c.AF.INET6 or route.rtmsg.rtm_type == c.RTN.BROADCAST or route.rtmsg.rtm_type == c.RTN.MULTICAST then
+         print('Unsupported route type')
          return
       end
-      
-      print("[ROUTE] ADD", route, ' Type ', route.rtmsg.rtm_type)
 
       local local_route     = route.rtmsg.rtm_type == c.RTN.LOCAL
 
@@ -373,6 +374,9 @@ local netlink_handlers = {
    end,
 }
 
+local IF_OPER_UP      = 6
+local IF_OPER_DORMANT = 5
+
 local alarm_handlers = {
    ['phy-down'] = function(alarm)
       local interface = get_config(snabb_config, 'interfaces', 'interface', alarm.alt_resource)
@@ -380,18 +384,18 @@ local alarm_handlers = {
          return print('Alarm notification for unknown interface ', alarm.resource, '/', alarm.alt_resource)
       end
 
-      local new_state = interface.lower_up and '' or 'lower_up' 
+      print("[ALARM] PHY ", interface.name, ' ', alarm.time)
+      --set_config(snabb_config, interface, 'interfaces', 'interface', interface.name)
 
-      -- Toggle interface status
-      interface.lower_up = not interface.lower_up
-
-      print("[ALARM] PHY ", new_state:upper(), interface.name, ' ', alarm.time)
-      set_config(snabb_config, interface, 'interfaces', 'interface', interface.name)
-
-      -- nl.newlink(i,         0,  flags, change or c.IFF.ALL)
-      -- nl.newlink(index, flags, iflags, change, ...)
-
-      return { c.RTM.NEWLINK, rupda_flags, nil, t.ifinfomsg, { ifi_index = interface.index, ifi_flags = c.IFF[new_state], ifi_change = c.IFF['lower_up'] } }
+      -- If link is up, set down
+      if interface.state == IF_OPER_UP then
+         --  ok, err = nl.newlink(interface.index, 0, 0, 0, "operstate", interface.state)
+         return { c.RTM.NEWLINK, rupda_flags, nil, t.ifinfomsg, { ifi_index = interface.index }, "operstate", IF_OPER_DORMANT }
+      else
+         --ok, err = nl.newlink(interface.index, 0, 'up', 'up', 'operstate', 6)
+         return { c.RTM.NEWLINK, rupda_flags, nil, t.ifinfomsg, { ifi_index = interface.index, ifi_flags = c.IFF.UP, ifi_change = c.IFF.UP }, "operstate", IF_OPER_UP }
+         
+      end
    end,
 }
 
@@ -459,7 +463,7 @@ function run(args)
          -- "IPV4_IFADDR",
          -- "IPV6_IFADDR",
          "IPV4_ROUTE",
-         "IPV6_ROUTE"
+         --"IPV6_ROUTE"
       }
    )
 
@@ -485,7 +489,7 @@ function run(args)
       --{ c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } }, -- Get IPv6 Addrs
 
       { c.RTM.GETROUTE, rroot_flags, c.AF.INET, t.rtmsg, t.rtmsg{ family = c.AF.INET, type = c.RTN.UNICAST } },   -- Get IPv4 Routes
-      { c.RTM.GETROUTE, rroot_flags, c.AF.INET6, t.rtmsg, t.rtmsg{ family = c.AF.INET6, type = c.RTN.UNICAST } }, -- Get IPv6 Routes
+      --{ c.RTM.GETROUTE, rroot_flags, c.AF.INET6, t.rtmsg, t.rtmsg{ family = c.AF.INET6, type = c.RTN.UNICAST } }, -- Get IPv6 Routes
    }
 
    -- Ask for netlink dump on slinkd start
@@ -618,6 +622,7 @@ function run(args)
                   print('Found alarm notification handler')
                   local req = handler(alarm)
                   if req then
+                     print('Sending request to netlink...')
                      pending_netlink_requests:put(req)
                   end
                end

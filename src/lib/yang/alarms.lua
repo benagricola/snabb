@@ -44,10 +44,9 @@ function notifications ()
    local notifications = state.notifications
    for k,v in pairs(notifications.alarm) do
       -- TODO: Improve JSON encode / decode to support nested tables
-      if type(v.alt_resource) == 'table' then
-         v.alt_resource = table.concat(v.alt_resource, ',')
-      end
-      table.insert(ret, v)
+      local x = lib.deepcopy(v)
+      x.status_change = nil
+      table.insert(ret, x)
    end
    for k,v in pairs(notifications.alarm_inventory_changed) do
       table.insert(ret, v)
@@ -337,7 +336,7 @@ local function add_status_change (key, alarm, status)
    alarm.last_changed = status.time
    state.alarm_list.last_changed = status.time
    table.insert(alarm.status_change, status)
-   add_alarm_notification(key, status)
+   add_alarm_notification(key, alarm)
 end
 
 function add_alarm_notification (key, status)
@@ -353,17 +352,10 @@ end
 local function new_alarm (key, args)
    local ret = assert(alarm_list:retrieve(key, args), 'Not supported alarm')
 
-   local alt_resource = args.alt_resource or ret.alt_resource or {}
-   assert(type(alt_resource) == "table")
-
    local status = {
       time = format_date_as_iso_8601(),
       perceived_severity = args.perceived_severity or ret.perceived_severity,
       alarm_text = args.alarm_text or ret.alarm_text,
-      resource      = key.resource,
-      alarm_type_id = key.alarm_type_id,
-      alarm_type_qualifier = key.alarm_type_qualifier,
-      alt_resource = alt_resource,
    }
 
    add_status_change(key, ret, status)
@@ -409,10 +401,6 @@ local function update_alarm (key, alarm, args)
          time = assert(format_date_as_iso_8601()),
          perceived_severity = assert(args.perceived_severity or alarm.perceived_severity),
          alarm_text = assert(args.alarm_text or alarm.alarm_text),
-         resource      = key.resource,
-         alarm_type_id = key.alarm_type_id,
-         alarm_type_qualifier = key.alarm_type_qualifier,
-         alt_resource = alt_resource,
       }
       add_status_change(key, alarm, status)
       alarm.is_cleared = args.is_cleared

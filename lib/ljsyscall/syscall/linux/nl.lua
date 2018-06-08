@@ -93,6 +93,10 @@ local ifla_decode = {
     local u = pt.uint(buf)
     ir.mtu = tonumber(u[0])
   end,
+  [c.IFLA.OPERSTATE] = function(ir, buf, len)
+   local u = pt.uint(buf)
+   ir.operstate = tonumber(u[0])
+ end,
   [c.IFLA.LINK] = function(ir, buf, len)
     local i = pt.int(buf)
     ir.link = tonumber(i[0])
@@ -917,7 +921,7 @@ local function ifla_f(tab, lookup, af, ...)
       -- slightly nasty
       if ffi.istype(t.uint32, value) then value = t.uint32_1(value) end
       if ffi.istype(t.uint16, value) then value = t.uint16_1(value) end
-      if ffi.istype(t.uint8, value) then value = t.uint8_1(value) end
+      if ffi.istype(t.uint8, value) then value = t.uint1(value) end
       ffi.copy(buf + offsets[i], value, ffi.sizeof(value))
     end
   end

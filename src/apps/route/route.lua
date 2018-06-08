@@ -62,7 +62,7 @@ function Route:new(config)
       debug                = config.debug,
       neighbours_v4        = {}, -- Default empty cltable
       neighbours_v6        = {}, -- Default empty cltable
-      sync_timer           = lib.throttle(1),
+      sync_timer           = lib.throttle(0.1),
       v4_build_timer       = lib.throttle(1),
       v6_build_timer       = lib.throttle(1),
       debug_timer          = lib.throttle(0.1),
@@ -101,7 +101,6 @@ function Route:init_v4()
    if self.config.routing.family_v4 then
       local family_v4 = self.config.routing.family_v4
 
-
       -- Choose LPM implementation
       local lpm_config = 'LPM4_'.. family_v4.lpm_implementation:lower()
       local lpm_class = require('lib.lpm.'..lpm_config:lower())[lpm_config]
@@ -123,6 +122,7 @@ function Route:init_v4()
 
       -- Build LPM only after all 
       self:build_v4_route()
+      print('Init V4 Routing...')
    end
 end
 

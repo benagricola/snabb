@@ -101,8 +101,14 @@ function read_json_object(input)
          skip_whitespace(input)
          consume(input, ":")
          skip_whitespace(input)
-         local v = read_json_string(input)
-         ret[k] = v
+
+         -- Check if object
+         if check(input, "{") then
+            ret[k] = read_json_object(input) 
+         else
+            ret[k] = read_json_string(input)
+         end
+         
          skip_whitespace(input)
       until not check(input, ",")
       skip_whitespace(input)
@@ -140,9 +146,13 @@ function write_json_object(output, obj)
    local comma = false
    for k,v in pairs(obj) do
       if comma then output:write_chars(',') else comma = true end
-      write_json_string(output, k)
-      output:write_chars(':')
-      write_json_string(output, v)
+      if type(v) == 'table' then
+         write_json_object(output, v)
+      else
+         write_json_string(output, tostring(k))
+         output:write_chars(':')
+         write_json_string(output, tostring(v))
+      end
    end
    output:write_chars('}')
 end
