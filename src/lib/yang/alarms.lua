@@ -333,12 +333,13 @@ local function add_status_change (key, alarm, status)
    alarm.last_changed = status.time
    state.alarm_list.last_changed = status.time
    table.insert(alarm.status_change, status)
-   add_alarm_notification(key, status)
+   add_alarm_notification(key, alarm)
 end
 
-function add_alarm_notification (key, status)
+function add_alarm_notification (key, alarm)
    local notifications = state.notifications.alarm
-   notifications[key] = new_notification('alarm-notification', status)
+   -- TODO: Insert key values
+   notifications[key] = new_notification('alarm-notification', alarm)
 end
 
 -- Creates a new alarm.
@@ -669,7 +670,7 @@ function compress_alarms (key)
    return count
 end
 
-local Alarm = {}
+local Alarm = { value = 0 }
 Alarm.__index={Alarm}
 
 function Alarm:check ()
@@ -677,10 +678,13 @@ function Alarm:check ()
       self.next_check = engine.now() + self.period
       self.last_value = self:get_value()
    elseif self.next_check < engine.now() then
+      -- returns true (alarm violated), false (alarm cleared),
+      -- or nil (alarm state not changed)
       local value = self:get_value()
-      if (value - self.last_value > self.limit) then
+      local state = self:is_active(value)
+      if state == true then
          self.alarm:raise()
-      else
+      elseif state == false then
          self.alarm:clear()
       end
       self.next_check = engine.now() + self.period
@@ -688,26 +692,54 @@ function Alarm:check ()
    end
 end
 
+function Alarm:get_value()
+   return self.value
+end
+
+-- returns true (alarm violated), false (alarm cleared), and nil (alarm state not changed)
+-- Default returns value if it has changed
+function Alarm:is_active(value)
+   if self.last_value ~= value then
+      return value
+   end
+   return nil
+end
+
+
 CallbackAlarm = {}
 
-function CallbackAlarm.new (alarm, period, limit, expr)
+function CallbackAlarm.new (alarm, period, expr)
    assert(type(expr) == 'function')
-   return setmetatable({alarm=alarm, period=period, limit=limit, expr=expr},
+   return setmetatable({alarm=alarm, period=period, expr=expr},
       {__index = setmetatable(CallbackAlarm, {__index=Alarm})})
 end
 function CallbackAlarm:get_value()
    return self.expr()
 end
 
+
+CallbackRateAlarm = {}
+
+function CallbackRateAlarm.new (alarm, period, limit, expr)
+   assert(type(expr) == 'function')
+   return setmetatable({alarm=alarm, period=period, limit=limit, expr=expr},
+      {__index = setmetatable(CallbackRateAlarm, {__index=CallbackAlarm})})
+end
+function CallbackRateAlarm:is_active(value)
+   return (value - self.last_value > self.limit)
+end
+
+
 CounterAlarm = {}
 
 function CounterAlarm.new (alarm, period, limit, object, counter_name)
    return setmetatable({alarm=alarm, period=period, limit=limit,  object=object,
-      counter_name=counter_name}, {__index = setmetatable(CounterAlarm, {__index=Alarm})})
+      counter_name=counter_name}, {__index = setmetatable(CounterAlarm, {__index=CallbackRateAlarm})})
 end
 function CounterAlarm:get_value()
    return counter.read(self.object.shm[self.counter_name])
 end
+
 
 --
 
