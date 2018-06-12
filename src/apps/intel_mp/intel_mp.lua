@@ -28,7 +28,8 @@ local shm         = require("core.shm")
 local alarms      = require("lib.yang.alarms")
 local S           = require("syscall")
 
-local CallbackAlarm     = alarms.CallbackRateAlarm
+local CallbackAlarm     = alarms.CallbackAlarm
+local CallbackRateAlarm = alarms.CallbackRateAlarm
 local transmit, receive, empty = link.transmit, link.receive, link.empty
 
 -- It's not clear what address to use for EEMNGCTL_i210 DPDK PMD / linux e1000
@@ -433,7 +434,7 @@ function Intel:new (conf)
          alarm_text='Ingress bandwith exceeds 1e9 bytes/s which can cause packet drops.'
       }
    }
-   self.ingress_bandwith_alarm = CallbackAlarm.new(ingress_bandwith,
+   self.ingress_bandwith_alarm = CallbackRateAlarm.new(ingress_bandwith,
       1, 1e9, function() return self:rxbytes() end)
 
    alarms.add_to_inventory {
@@ -449,9 +450,8 @@ function Intel:new (conf)
          alarm_text='Ingress packet-rate exceeds 2MPPS which can cause packet drops.'
       }
    }
-   self.ingress_packet_rate_alarm = CallbackAlarm.new(ingress_packet_rate,
+   self.ingress_packet_rate_alarm = CallbackRateAlarm.new(ingress_packet_rate,
       1, 2e6, function() return self:rxpackets() end)
-
 
    if self.master then
       alarms.add_to_inventory {
@@ -469,13 +469,12 @@ function Intel:new (conf)
             alt_resource={self.alias}
          }
       }
-      self.phy_down_state_alarm = alarms.CallbackAlarm.new(phy_down_state,
+      self.phy_down_state_alarm = CallbackAlarm.new(phy_down_state,
          1, function()
             -- Alarm is not active when link is active
             return not self:link_status()
          end)
    end
-
    return self
 end
 
@@ -720,7 +719,6 @@ function Intel:pull ()
    if self.run_stats and self.sync_timer() then
       self:sync_stats()
    end
-
    if self.master then
       self.phy_down_state_alarm:check()
    end
