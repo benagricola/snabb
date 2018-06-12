@@ -45,12 +45,12 @@ function notifications ()
    for k,v in pairs(notifications.alarm) do
       table.insert(ret, v)
    end
-   for k,v in pairs(notifications.alarm_inventory_changed) do
-      table.insert(ret, v)
-   end
-   for k,v in pairs(notifications.operator_action) do
-      table.insert(ret, v)
-   end
+   -- for k,v in pairs(notifications.alarm_inventory_changed) do
+   --    table.insert(ret, v)
+   -- end
+   -- for k,v in pairs(notifications.operator_action) do
+   --    table.insert(ret, v)
+   -- end
    clear_notifications()
    return ret
 end
@@ -327,7 +327,6 @@ end
 -- 'is-cleared', 'perceived-severity' and 'alarm-text' for the alarm.
 -- The time-stamp for that entry MUST be equal to the 'last-changed' leaf.
 local function add_status_change (key, alarm, status)
-   print('Alarm status change')
    alarm.status_change = alarm.status_change or {}
    alarm.perceived_severity = status.perceived_severity
    alarm.alarm_text = status.alarm_text
@@ -338,9 +337,16 @@ local function add_status_change (key, alarm, status)
 end
 
 function add_alarm_notification (key, alarm)
-   local notifications = state.notifications.alarm
-   -- TODO: Insert key values
-   notifications[key] = new_notification('alarm-notification', alarm)
+   local notification = {
+      time                 = alarm.time,
+      resource             = key.resource,
+      alarm_type_id        = key.alarm_type_id,
+      alarm_type_qualifier = key.alarm_type_qualifier,
+      alt_resource         = alarm.alt_resource,
+      perceived_severity   = alarm.perceived_severity,
+      alarm_text           = alarm.alarm_text
+   }
+   state.notifications.alarm[key] = new_notification('alarm-notification', notification)
 end
 
 -- Creates a new alarm.
@@ -684,8 +690,10 @@ function Alarm:check ()
       local value = self:get_value()
       local state = self:is_active(value)
       if state == true then
+         print('Raising alarm')
          self.alarm:raise()
       elseif state == false then
+         print('Clearing alarm')
          self.alarm:clear()
       end
       self.next_check = engine.now() + self.period
@@ -701,8 +709,10 @@ end
 -- Default returns value if it has changed
 function Alarm:is_active(value)
    if self.last_value ~= value then
+      print('Value has changed from ' .. tostring(self.last_value) .. ' to ' .. tostring(value))
       return value
    end
+   print('Value has not changed from ' .. tostring(self.last_value))
    return nil
 end
 

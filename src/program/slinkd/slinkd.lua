@@ -16,10 +16,13 @@ local ipv4 = require("lib.protocol.ipv4")
 local socket = require("lib.stream.socket")
 local yang = require("lib.yang.yang")
 local yang_util = require("lib.yang.util")
+local alarms = require("program.slinkd.alarms")
 local rpc = require("lib.yang.rpc")
 local data = require("lib.yang.data")
 local path_lib = require("lib.yang.path")
 local common = require("program.config.common")
+
+local util = require("program.slinkd.util")
 
 local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
 
@@ -59,7 +62,7 @@ local print = function(...)
    io.stdout:flush_output()
 end
 
-local snabb_config = nil
+
 
 local has_changed = function(existing, new) 
    for k, v in pairs(new) do
@@ -99,7 +102,7 @@ end
 -- Update top-level config instance at `path`
 local update_config = function()
    local xpath = '/'
-   local config = common.serialize_config(snabb_config, schema_name, xpath)
+   local config = common.serialize_config(util.snabb_config, schema_name, xpath)
    return { 
       method = 'set-config',
       args = { 
@@ -159,7 +162,7 @@ local netlink_handlers = {
       -- Loopback and non-mac interfaces not supported
       if link.loopback or not link.macaddr then return end
 
-      local device = get_config(snabb_config, 'hardware', 'device', link.name)
+      local device = get_config(util.snabb_config, 'hardware', 'device', link.name)
 
       if not device then return end
 
@@ -174,7 +177,7 @@ local netlink_handlers = {
          link.operstate
       )
    
-      local existing = get_config(snabb_config, 'interfaces', 'interface', link.name)
+      local existing = get_config(util.snabb_config, 'interfaces', 'interface', link.name)
    
       if existing then
          if not has_changed(existing, new) then
@@ -182,13 +185,13 @@ local netlink_handlers = {
          end
       end
    
-      set_config(snabb_config, new, 'interfaces', 'interface', link.name)
+      set_config(util.snabb_config, new, 'interfaces', 'interface', link.name)
       link_index_map[link.index] = link.name
 
       return true
    end,
    [RTM.DELLINK] = function(link)
-      local existing = get_config(snabb_config, 'interfaces', 'interface', link.name)
+      local existing = get_config(util.snabb_config, 'interfaces', 'interface', link.name)
 
       if not existing then
          return nil
@@ -196,7 +199,7 @@ local netlink_handlers = {
 
       print("[LINK] DEL", link)
 
-      set_config(snabb_config, nil, 'interfaces', 'interface', link.name)
+      set_config(util.snabb_config, nil, 'interfaces', 'interface', link.name)
       link_index_map[link.index] = nil
       return true
    end,
@@ -217,7 +220,7 @@ local netlink_handlers = {
       local cur_neigh = neigh_index_map[dst]
 
       if cur_neigh then
-         existing = get_config(snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
+         existing = get_config(util.snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
       end
 
       if existing then
@@ -245,14 +248,14 @@ local netlink_handlers = {
 
       end
 
-      set_config(snabb_config, new, 'routing', path, 'neighbour', tostring(new.index))
+      set_config(util.snabb_config, new, 'routing', path, 'neighbour', tostring(new.index))
 
       -- Create new route for this directly connected system
       local rt_dst = dst .. "/32"
 
       local new_route = new_route(rt_dst, tostring(new.index))
 
-      local existing_route = get_config(snabb_config, 'routing', path, 'route', rt_dst)
+      local existing_route = get_config(util.snabb_config, 'routing', path, 'route', rt_dst)
 
       if existing_route then
          if not has_changed(existing_route, new_route) then
@@ -260,7 +263,7 @@ local netlink_handlers = {
          end
       end
 
-      set_config(snabb_config, new_route, 'routing', path, 'route', rt_dst)
+      set_config(util.snabb_config, new_route, 'routing', path, 'route', rt_dst)
       return true
    end,
    [RTM.DELNEIGH] = function(neigh)
@@ -269,7 +272,7 @@ local netlink_handlers = {
 
       local cur_neigh   = neigh_index_map[dst]
 
-      local existing = get_config(snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
+      local existing = get_config(util.snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
 
       if not existing then
          return nil
@@ -279,13 +282,13 @@ local netlink_handlers = {
 
       local rt_dst = dst .. "/32"
 
-      local existing_route = get_config(snabb_config, 'routing', path, 'route', rt_dst)
+      local existing_route = get_config(util.snabb_config, 'routing', path, 'route', rt_dst)
 
       if existing_route then
-         set_config(snabb_config, nil, 'routing', path, 'route', rt_dst)
+         set_config(util.snabb_config, nil, 'routing', path, 'route', rt_dst)
       end
 
-      set_config(snabb_config, nil, 'routing', path, 'neighbour', existing.index)
+      set_config(util.snabb_config, nil, 'routing', path, 'neighbour', existing.index)
       return true
    end,
    [RTM.NEWROUTE] = function(route)
@@ -308,7 +311,7 @@ local netlink_handlers = {
       local path = family_path[route.family]
 
       local existing_neigh 
-      local existing_route = get_config(snabb_config, 'routing', path, 'route', dst)
+      local existing_route = get_config(util.snabb_config, 'routing', path, 'route', dst)
       
       local new, idx
 
@@ -320,7 +323,7 @@ local netlink_handlers = {
          idx = 2
       else
          if cur_neigh then
-            existing_neigh = get_config(snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
+            existing_neigh = get_config(util.snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
          end
 
          -- No neighbour already learned for this route - create a dummy
@@ -335,7 +338,7 @@ local netlink_handlers = {
                c.NUD.NONE
             )
 
-            set_config(snabb_config, existing_neigh, 'routing', path, 'neighbour', tostring(neigh_index))
+            set_config(util.snabb_config, existing_neigh, 'routing', path, 'neighbour', tostring(neigh_index))
          end
 
          idx = existing_neigh.index
@@ -349,7 +352,7 @@ local netlink_handlers = {
          end
       end
 
-      set_config(snabb_config, new, 'routing', path, 'route', dst)
+      set_config(util.snabb_config, new, 'routing', path, 'route', dst)
       return true
    end,
    [RTM.DELROUTE] = function(route)
@@ -360,7 +363,7 @@ local netlink_handlers = {
       local dst  = tostring(route.dest) .. "/" .. tostring(route.dst_len)
       local path = family_path[route.family]
 
-      local existing = get_config(snabb_config, 'routing', path, 'route', dst)
+      local existing = get_config(util.snabb_config, 'routing', path, 'route', dst)
 
       if not existing then
          return nil
@@ -368,36 +371,10 @@ local netlink_handlers = {
 
       print("[ROUTE] DEL", route)
 
-      set_config(snabb_config, nil, 'routing', path, 'route', dst)
+      set_config(util.snabb_config, nil, 'routing', path, 'route', dst)
       return true
    end,
 }
-
-local IF_OPER_UP      = 6
-local IF_OPER_DORMANT = 5
-
-local alarm_handlers = {
-   ['phy-down'] = function(alarm)
-      local interface = get_config(snabb_config, 'interfaces', 'interface', alarm.alt_resource[1])
-      if not interface then
-         return print('Alarm notification for unknown interface ', alarm.resource, '/', alarm.alt_resource)
-      end
-
-      print("[ALARM] PHY ", interface.name, ' ', alarm.time)
-      --set_config(snabb_config, interface, 'interfaces', 'interface', interface.name)
-
-      -- If link is up, set down
-      if interface.state == IF_OPER_UP then
-         --  ok, err = nl.newlink(interface.index, 0, 0, 0, "operstate", interface.state)
-         return { c.RTM.NEWLINK, rupda_flags, nil, t.ifinfomsg, { ifi_index = interface.index }, "operstate", IF_OPER_DORMANT }
-      else
-         --ok, err = nl.newlink(interface.index, 0, 'up', 'up', 'operstate', 6)
-         return { c.RTM.NEWLINK, rupda_flags, nil, t.ifinfomsg, { ifi_index = interface.index, ifi_flags = c.IFF.UP, ifi_change = c.IFF.UP }, "operstate", IF_OPER_UP }
-         
-      end
-   end,
-}
-
 
 local function attach_listener(leader, caller, schema_name, revision_date)
    local msg, parse_reply = rpc.prepare_call(
@@ -406,23 +383,6 @@ local function attach_listener(leader, caller, schema_name, revision_date)
    return parse_reply(mem.open_input_string(common.recv_message(leader)))
 end
 
-function connect_alarms(instance_id)
-   local tail = instance_id .. '/notifications'
-   
-   -- Subscribe to notifications (alarms) from snabb
-   local ok, sock = pcall(socket.connect_unix, shm.root..'/by-name/' .. tail)
-
-   if not ok then
-      ok, sock = pcall(socket.connect_unix, shm.root .. '/' .. tail)
-   end
-
-   if not ok then
-      error("Could not connect to notifications socket\n")
-      os.exit(1)
-   end
-
-   return sock
-end
 
 function connect_netlink(type, groups)
    -- Subscribe to default groups - LINK, ROUTE, NEIGH and ADDR
@@ -466,17 +426,6 @@ function run(args)
       }
    )
 
-   local alsock = connect_alarms(args.instance_id)
-
-   local function exit_if_error(f)
-      return function()
-         local success, res = pcall(f)
-         if not success then
-            io.stderr:write('error: '..tostring(res)..'\n')
-            os.exit(1)
-         end
-      end
-   end
 
    -- nlmsg    (ntype, flags, af, ...)
    -- nl.write (sock, dest, ntype, flags, af, ...)
@@ -498,7 +447,7 @@ function run(args)
       end
    end
 
-   local function load_snabb_config()
+   local function load_util.snabb_config()
       local req = {
          method = 'get-config',
          args = { schema=schema_name, path='/' },
@@ -509,27 +458,27 @@ function run(args)
                error('Unable to load snabb config from instance, aborting!')
             end
 
-            snabb_config = yang.load_config_for_schema_by_name(schema_name, mem.open_input_string(cfg.config))
+            util.snabb_config = yang.load_config_for_schema_by_name(schema_name, mem.open_input_string(cfg.config))
 
-            if not snabb_config.interfaces then
-               snabb_config.interfaces = {}
+            if not util.snabb_config.interfaces then
+               util.snabb_config.interfaces = {}
             end
 
-            if not snabb_config.interfaces.interface then
-               snabb_config.interfaces.interface = {}
+            if not util.snabb_config.interfaces.interface then
+               util.snabb_config.interfaces.interface = {}
             end
 
-            if not snabb_config.routing then
-               snabb_config.routing = {}
+            if not util.snabb_config.routing then
+               util.snabb_config.routing = {}
             end
 
             for _, fam in pairs(family_path) do
-               if not snabb_config.routing[fam] then
-                  snabb_config.routing[fam] = {}
+               if not util.snabb_config.routing[fam] then
+                  util.snabb_config.routing[fam] = {}
                end
 
-               if not snabb_config.routing[fam]['neighbour'] then
-                  snabb_config.routing[fam]['neighbour'] = {}
+               if not util.snabb_config.routing[fam]['neighbour'] then
+                  util.snabb_config.routing[fam]['neighbour'] = {}
                end
             end
 
@@ -539,7 +488,6 @@ function run(args)
       }
       pending_snabb_requests:put(req)
    end
-
 
    local config_changed = false
 
@@ -610,35 +558,13 @@ function run(args)
    end
 
 
-   -- Received alarms require reconfiguration of linux via netlink
-   local function handle_alarms()
-      while true do
-         local alarm = json.read_json_object(alsock)
-         if alarm ~= nil then
-            for k, v in pairs(alarm) do print(k, v) end
-            if alarm.event == 'alarm-notification' then
-               local handler = alarm_handlers[alarm.alarm_type_id]
-               if handler then 
-                  print('Found alarm notification handler')
-                  local req = handler(alarm)
-                  if req then
-                     print('Sending request to netlink...')
-                     pending_netlink_requests:put(req)
-                  end
-               end
-            end
-         end
-      end
-   end
-
-
-   fiber.spawn(exit_if_error(handle_netlink_events))
-   fiber.spawn(exit_if_error(handle_pending_netlink_requests))
-   fiber.spawn(exit_if_error(handle_pending_snabb_requests))
-   fiber.spawn(exit_if_error(handle_pending_snabb_replies))
-   fiber.spawn(exit_if_error(load_snabb_config))
+   fiber.spawn(util.exit_if_error(handle_netlink_events))
+   fiber.spawn(util.exit_if_error(handle_pending_netlink_requests))
+   fiber.spawn(util.exit_if_error(handle_pending_snabb_requests))
+   fiber.spawn(util.exit_if_error(handle_pending_snabb_replies))
+   fiber.spawn(util.exit_if_error(load_snabb_config))
    fiber.spawn(exit_if_error(handle_config_changes))
-   fiber.spawn(exit_if_error(handle_alarms))
+   fiber.spawn(alarm_handler(args.instance_id, pending_netlink_requests))
 
    fiber.main()
 end

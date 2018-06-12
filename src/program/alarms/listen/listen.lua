@@ -18,7 +18,7 @@ end
 local function parse_command_line(args)
    local handlers = {}
    function handlers.h() show_usage(0) end
-   args = lib.dogetopt(args, handlers, "h", {help="h"})
+   args, msg = lib.dogetopt(args, handlers, "h", {help="h"})
    if #args ~= 1 then show_usage(1, msg) end
    return unpack(args)
 end
