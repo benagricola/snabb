@@ -31,7 +31,6 @@ local channel = require("lib.ptree.channel")
 local trace = require("lib.ptree.trace")
 local alarms = require("lib.yang.alarms")
 local json = require("lib.ptree.json")
-local fj   = require("lib.json")
 local queue = require('lib.fibers.queue')
 local fiber_sleep = require('lib.fibers.sleep').sleep
 local inotify = require("lib.ptree.inotify")
@@ -232,11 +231,8 @@ function Manager:handle_notification_peer(peer)
       peer:close()
    end
    self:call_with_cleanup(q, function()
-      while true do  
-         local obj = q:get()
-
-         json.write_json_object(peer, obj)
-         print(fj.encode(obj))
+      while true do
+         json.write_json_object(peer, q:get())
          peer:write_chars("\n")
          peer:flush_output()
       end

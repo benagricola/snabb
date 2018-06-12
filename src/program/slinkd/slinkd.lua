@@ -19,7 +19,6 @@ local yang_util = require("lib.yang.util")
 local rpc = require("lib.yang.rpc")
 local data = require("lib.yang.data")
 local path_lib = require("lib.yang.path")
-local json_lib = require("lib.ptree.json")
 local common = require("program.config.common")
 
 local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
@@ -379,7 +378,7 @@ local IF_OPER_DORMANT = 5
 
 local alarm_handlers = {
    ['phy-down'] = function(alarm)
-      local interface = get_config(snabb_config, 'interfaces', 'interface', alarm.alt_resource)
+      local interface = get_config(snabb_config, 'interfaces', 'interface', alarm.alt_resource[1])
       if not interface then
          return print('Alarm notification for unknown interface ', alarm.resource, '/', alarm.alt_resource)
       end
@@ -616,6 +615,7 @@ function run(args)
       while true do
          local alarm = json.read_json_object(alsock)
          if alarm ~= nil then
+            for k, v in pairs(alarm) do print(k, v) end
             if alarm.event == 'alarm-notification' then
                local handler = alarm_handlers[alarm.alarm_type_id]
                if handler then 

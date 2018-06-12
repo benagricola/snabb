@@ -43,10 +43,7 @@ function notifications ()
    local ret = {}
    local notifications = state.notifications
    for k,v in pairs(notifications.alarm) do
-      -- TODO: Improve JSON encode / decode to support nested tables
-      local x = lib.deepcopy(v)
-      x.status_change = nil
-      table.insert(ret, x)
+      table.insert(ret, v)
    end
    for k,v in pairs(notifications.alarm_inventory_changed) do
       table.insert(ret, v)
@@ -330,6 +327,7 @@ end
 -- 'is-cleared', 'perceived-severity' and 'alarm-text' for the alarm.
 -- The time-stamp for that entry MUST be equal to the 'last-changed' leaf.
 local function add_status_change (key, alarm, status)
+   print('Alarm status change')
    alarm.status_change = alarm.status_change or {}
    alarm.perceived_severity = status.perceived_severity
    alarm.alarm_text = status.alarm_text
@@ -339,9 +337,10 @@ local function add_status_change (key, alarm, status)
    add_alarm_notification(key, alarm)
 end
 
-function add_alarm_notification (key, status)
+function add_alarm_notification (key, alarm)
+   print('Add notification')
    local notifications = state.notifications.alarm
-   notifications[key] = new_notification('alarm-notification', status)
+   notifications[key] = new_notification('alarm-notification', alarm)
 end
 
 -- Creates a new alarm.
@@ -351,13 +350,11 @@ end
 -- status change is added to the alarm.
 local function new_alarm (key, args)
    local ret = assert(alarm_list:retrieve(key, args), 'Not supported alarm')
-
    local status = {
       time = format_date_as_iso_8601(),
       perceived_severity = args.perceived_severity or ret.perceived_severity,
       alarm_text = args.alarm_text or ret.alarm_text,
    }
-
    add_status_change(key, ret, status)
    ret.last_changed = assert(status.time)
    ret.time_created = assert(ret.last_changed)
@@ -394,9 +391,6 @@ end
 -- flag.
 local function update_alarm (key, alarm, args)
    if needs_status_change(alarm, args) then
-      local alt_resource = args.alt_resource or alarm.alt_resource or {}
-      assert(type(alt_resource) == "table")
-
       local status = {
          time = assert(format_date_as_iso_8601()),
          perceived_severity = assert(args.perceived_severity or alarm.perceived_severity),

@@ -1,7 +1,21 @@
 -- Use of this source code is governed by the Apache 2.0 license; see COPYING.
 module(..., package.seeall)
 
--- A very limited json library that only does objects of strings.
+-- A slightly-less-limited json library that handles nested objects and lists.
+-- Only current limitation is not encoding 'array' lua tables as a JSON list.
+
+-- nil is represented as an empty table 
+local NIL = {}
+local constants = {
+   ["true"]  = true, 
+   ["false"] = false, 
+   ["null"]  = NIL 
+}
+
+-- Forward declarations as some of these functions call recursively
+local read_json_string, read_json_array, read_json_number_or_bool, read_json_type
+local write_json_null, write_json_scalar, write_json_string, write_json_type
+
 
 local function take_while(input, pat)
    local out = {}
@@ -20,13 +34,20 @@ local function skip_whitespace(input)
    drop_while(input, whitespace_pat)
 end
 
-local function check(input, ch)
+local function peek(input, ch)
    if input:peek_char() ~= ch then return false end
-   input:read_char()
    return true
 end
 
-local function consume(input, expected)
+local function check(input, ch)
+   local v = peek(input, ch)
+   if v then
+      input:read_char()
+   end
+   return v
+end
+
+function consume(input, expected)
    local ch = input:read_char()
    if ch == expected then return end
    if ch == nil then error('unexpected EOF') end
@@ -57,7 +78,7 @@ end
 local escaped_string_chars =
    { r="\r", n="\n", t="\t", ["\\"]="\\", ['"']='"', b="\b", f="\f", ["/"]="/" }
 
-local function read_json_string(input)
+read_json_string = function(input)
    consume(input, '"')
    local parts = {}
    while not check(input, '"') do
@@ -86,7 +107,51 @@ local function read_json_string(input)
    return table.concat(parts)
 end
 
-function read_json_object(input)
+read_json_array = function(input)
+   skip_whitespace(input)
+   consume(input, "[")
+   skip_whitespace(input)
+   local ret = {}
+   if not check(input, "]") then
+      repeat
+         skip_whitespace(input)
+         local v = read_json_type(input)
+         skip_whitespace(input)
+         ret[#ret+1] = v
+      until not check(input, ",")
+      skip_whitespace(input)
+      consume(input, "]")
+   end
+   skip_whitespace(input)
+   return ret
+end
+
+read_json_scalar = function(input)
+   skip_whitespace(input)
+   local v = take_while(input, '[0-9%-%.truefalsn]')
+   skip_whitespace(input)
+
+   if constants[v] ~= nil then
+      return constants[v]
+   end
+   v = tonumber(v) or v
+   if v then return v else error('unparseable json number or boolean: '..v) end
+end
+
+read_json_type = function(input)
+   if peek(input, "{") then
+      return read_json_object(input) 
+   elseif peek(input, "[") then
+      return read_json_array(input)
+   elseif peek(input, '"') then
+      return read_json_string(input)
+   else
+      return read_json_scalar(input)
+   end
+   error('unparseable json type, starting: '..tostring(input:peek_byte()))
+end
+
+read_json_object = function(input)
    skip_whitespace(input)
    -- Return nil on EOF.
    if input:peek_byte() == nil then return nil end
@@ -96,28 +161,30 @@ function read_json_object(input)
    if not check(input, "}") then
       repeat
          skip_whitespace(input)
-         local k = read_json_string(input)
+         local k = read_json_type(input)
          if ret[k] then error('duplicate key: '..k) end
          skip_whitespace(input)
          consume(input, ":")
          skip_whitespace(input)
-
-         -- Check if object
-         if check(input, "{") then
-            ret[k] = read_json_object(input) 
-         else
-            ret[k] = read_json_string(input)
-         end
-         
+         ret[k] = read_json_type(input)
          skip_whitespace(input)
       until not check(input, ",")
       skip_whitespace(input)
       consume(input, "}")
    end
+   skip_whitespace(input)
    return ret
 end
 
-local function write_json_string(output, str)
+write_json_null = function(output)
+   return output:write_chars('null')
+end
+
+write_json_scalar = function(output, var)
+   return output:write_chars(tostring(var))
+end
+
+write_json_string = function(output, str)
    output:write_chars('"')
    local pos = 1
    while pos <= #str do
@@ -141,18 +208,33 @@ local function write_json_string(output, str)
    output:write_chars('"')
 end
 
-function write_json_object(output, obj)
+write_json_type = function(output, var)
+   local tp = type(var)
+
+   if tp == 'table' then
+      if var == NIL then
+         return write_json_null(output)
+      end
+
+      -- TODO: Choose array or object
+      return write_json_object(output, var)
+   elseif tp == 'string' then
+      return write_json_string(output, var)
+   elseif tp == 'boolean' or tp == 'number' then
+      return write_json_scalar(output, var)
+   end
+
+   return error('unable to serialize value of unknown type: '..tp)
+end
+
+write_json_object = function(output, obj)
    output:write_chars('{')
    local comma = false
    for k,v in pairs(obj) do
       if comma then output:write_chars(',') else comma = true end
-      if type(v) == 'table' then
-         write_json_object(output, v)
-      else
-         write_json_string(output, tostring(k))
-         output:write_chars(':')
-         write_json_string(output, tostring(v))
-      end
+      write_json_type(output, k)
+      output:write_chars(':')
+      write_json_type(output, v)
    end
    output:write_chars('}')
 end
@@ -184,5 +266,12 @@ function selftest ()
              {foo='bar', baz='qux'})
    test_json('{ "fo\\u000ao" : "ba\\r " , "baz" : "qux" }',
              {['fo\no']='ba\r ', baz='qux'})
+   
+   -- Nested list
+   test_json('{"foo":"bar","baz":["foo","bar","baz"]}', {foo='bar', baz={"foo","bar","baz"}})
+   test_json('{"foo":"bar","baz":["foo","bar",{"one": "waldo","two": "fred", "three": "grault"}]}', {foo='bar', baz={"foo","bar",{one="waldo", two="fred", three="grault"}}})
+
+   -- Numbers and constants
+   test_json('{"foo":1, "bar": 3, "baz": true, "fix": false}', {foo=1, bar=3, baz=true, fix=false})
    print('selftest: ok')
 end
