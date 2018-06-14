@@ -172,7 +172,6 @@ read_json_object = function(input)
       skip_whitespace(input)
       consume(input, "}")
    end
-   skip_whitespace(input)
    return ret
 end
 

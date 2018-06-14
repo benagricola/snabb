@@ -690,10 +690,8 @@ function Alarm:check ()
       local value = self:get_value()
       local state = self:is_active(value)
       if state == true then
-         print('Raising alarm')
          self.alarm:raise()
       elseif state == false then
-         print('Clearing alarm')
          self.alarm:clear()
       end
       self.next_check = engine.now() + self.period
@@ -709,10 +707,8 @@ end
 -- Default returns value if it has changed
 function Alarm:is_active(value)
    if self.last_value ~= value then
-      print('Value has changed from ' .. tostring(self.last_value) .. ' to ' .. tostring(value))
       return value
    end
-   print('Value has not changed from ' .. tostring(self.last_value))
    return nil
 end
 

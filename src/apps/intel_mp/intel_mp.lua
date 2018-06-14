@@ -469,8 +469,9 @@ function Intel:new (conf)
             alt_resource={self.alias}
          }
       }
+      local a = self
       self.phy_down_state_alarm = CallbackAlarm.new(phy_down_state,
-         1, function()
+         0.1, function()
             -- Alarm is not active when link is active
             return not self:link_status()
          end)
