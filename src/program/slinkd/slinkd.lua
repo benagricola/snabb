@@ -65,260 +65,7 @@ end
 
 
 
-local new_neigh = function(index, address, interface, mac, state)
-   neigh_index_map[address] = index
-   local available = false
-   
-   if (state >= c.NUD.REACHABLE and state ~= c.NUD.FAILED) then
-      available = true
-   end
 
-   return {
-      index     = index,
-      interface = interface,
-      address   = address,
-      mac       = mac,
-      available = available,
-   }
-end
-
-local new_route = function(dst, gateway)
-   return {
-      dst     = dst,
-      gateway = gateway,
-   }
-end
-
-local new_link = function(index, name, mac, mtu, up, state)
-   return {
-      index    = index,
-      name     = name,
-      mac      = mac,
-      mtu      = mtu,
-      up       = up,
-      state    = state,
-   }
-end
-
-
-local netlink_handlers = {
-   [RTM.NEWLINK] = function(link)
-      -- Loopback and non-mac interfaces not supported
-      if link.loopback or not link.macaddr then return end
-
-      local device = util.get_config(util.snabb_config, 'hardware', 'device', link.name)
-
-      if not device then return end
-
-      print("[LINK] ADD", link)
-
-      local new = new_link(
-         link.index, 
-         link.name, 
-         tostring(link.macaddr),
-         link.mtu + 14,
-         link.flags[c.IFF.UP],
-         link.operstate
-      )
-   
-      local existing = util.get_config(util.snabb_config, 'interfaces', 'interface', link.name)
-   
-      if existing then
-         if not util.has_changed(existing, new) then
-            return
-         end
-      end
-   
-      util.set_config(util.snabb_config, new, 'interfaces', 'interface', link.name)
-      link_index_map[link.index] = link.name
-
-      return true
-   end,
-   [RTM.DELLINK] = function(link)
-      local existing = util.get_config(util.snabb_config, 'interfaces', 'interface', link.name)
-
-      if not existing then
-         return nil
-      end
-
-      print("[LINK] DEL", link)
-
-      util.set_config(util.snabb_config, nil, 'interfaces', 'interface', link.name)
-      link_index_map[link.index] = nil
-      return true
-   end,
-   [RTM.NEWNEIGH] = function(neigh)
-      -- TODO: If LLADDR is nil but rest OK then this means lladdr has expired
-      -- So we want to update the neighbour anyway.
-
-      local link = link_index_map[neigh.ifindex]
-      if not link then return end
-
-      print("[NEIGH] ADD", neigh)
-
-      local new, existing
-
-      local dst = tostring(neigh.dest)
-      local path = family_path[neigh.family]
-
-      local cur_neigh = neigh_index_map[dst]
-
-      if cur_neigh then
-         existing = util.get_config(util.snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
-      end
-
-      if existing then
-         new = new_neigh(
-            existing.index,
-            dst, 
-            neigh.ifindex,
-            tostring(neigh.lladdr),
-            neigh.state
-         )
-
-         if not util.has_changed(existing, new) then
-            return
-         end
-      else
-         neigh_index = neigh_index + 1
-
-         new = new_neigh(
-            neigh_index,
-            dst, 
-            neigh.ifindex,
-            tostring(neigh.lladdr),
-            neigh.state
-         )
-
-      end
-
-      util.set_config(util.snabb_config, new, 'routing', path, 'neighbour', tostring(new.index))
-
-      -- Create new route for this directly connected system
-      local rt_dst = dst .. "/32"
-
-      local new_route = new_route(rt_dst, tostring(new.index))
-
-      local existing_route = util.get_config(util.snabb_config, 'routing', path, 'route', rt_dst)
-
-      if existing_route then
-         if not util.has_changed(existing_route, new_route) then
-            return true
-         end
-      end
-
-      util.set_config(util.snabb_config, new_route, 'routing', path, 'route', rt_dst)
-      return true
-   end,
-   [RTM.DELNEIGH] = function(neigh)
-      local dst = tostring(neigh.dest)
-      local path = family_path[neigh.family]
-
-      local cur_neigh   = neigh_index_map[dst]
-
-      local existing = util.get_config(util.snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
-
-      if not existing then
-         return nil
-      end
-
-      print("[NEIGH] DEL", neigh)
-
-      local rt_dst = dst .. "/32"
-
-      local existing_route = util.get_config(util.snabb_config, 'routing', path, 'route', rt_dst)
-
-      if existing_route then
-         util.set_config(util.snabb_config, nil, 'routing', path, 'route', rt_dst)
-      end
-
-      util.set_config(util.snabb_config, nil, 'routing', path, 'neighbour', existing.index)
-      return true
-   end,
-   [RTM.NEWROUTE] = function(route)
-      print("[ROUTE] ADD", route, ' Type ', route.rtmsg.rtm_type)
-
-      if route.family == c.AF.INET6 or route.rtmsg.rtm_type == c.RTN.BROADCAST or route.rtmsg.rtm_type == c.RTN.MULTICAST then
-         print('Unsupported route type')
-         return
-      end
-
-      local local_route     = route.rtmsg.rtm_type == c.RTN.LOCAL
-
-      -- TODO: Handle prohibit correctly
-      local blackhole_route = (route.rtmsg.rtm_type == c.RTN.BLACKHOLE or route.rtmsg.rtm_type == c.RTN.PROHIBIT)
-
-      local gateway     = tostring(route.gw)
-      local dst         = tostring(route.dest) .. "/" .. tostring(route.dst_len)
-      local cur_neigh   = neigh_index_map[gateway]
-   
-      local path = family_path[route.family]
-
-      local existing_neigh 
-      local existing_route = util.get_config(util.snabb_config, 'routing', path, 'route', dst)
-      
-      local new, idx
-
-
-      -- Send local routes to control
-      if local_route then
-         idx = 1
-      elseif blackhole_route then
-         idx = 2
-      else
-         if cur_neigh then
-            existing_neigh = util.get_config(util.snabb_config, 'routing', path, 'neighbour', tostring(cur_neigh))
-         end
-
-         -- No neighbour already learned for this route - create a dummy
-         if not existing_neigh then
-            neigh_index = neigh_index + 1
-
-            existing_neigh = new_neigh(
-               neigh_index,
-               gateway, 
-               route.index,
-               "00:00:00:00:00:00",
-               c.NUD.NONE
-            )
-
-            util.set_config(util.snabb_config, existing_neigh, 'routing', path, 'neighbour', tostring(neigh_index))
-         end
-
-         idx = existing_neigh.index
-      end
-
-      new = new_route(dst, tostring(idx))
-
-      if existing_route then
-         if not util.has_changed(existing_route, new) then
-            return
-         end
-      end
-
-      util.set_config(util.snabb_config, new, 'routing', path, 'route', dst)
-      return true
-   end,
-   [RTM.DELROUTE] = function(route)
-      if route.family == c.AF.INET6 or route.rtmsg.rtm_type == c.RTN.BROADCAST or route.rtmsg.rtm_type == c.RTN.MULTICAST then
-         return
-      end
-
-      local dst  = tostring(route.dest) .. "/" .. tostring(route.dst_len)
-      local path = family_path[route.family]
-
-      local existing = util.get_config(util.snabb_config, 'routing', path, 'route', dst)
-
-      if not existing then
-         return nil
-      end
-
-      print("[ROUTE] DEL", route)
-
-      util.set_config(util.snabb_config, nil, 'routing', path, 'route', dst)
-      return true
-   end,
-}
 
 local function attach_listener(leader, caller, schema_name, revision_date)
    local msg, parse_reply = rpc.prepare_call(
@@ -327,18 +74,6 @@ local function attach_listener(leader, caller, schema_name, revision_date)
    return parse_reply(mem.open_input_string(common.recv_message(leader)))
 end
 
-
-function connect_netlink(type, groups)
-   -- Subscribe to default groups - LINK, ROUTE, NEIGH and ADDR
-   local ok, sock = pcall(socket.connect_netlink, type, groups)
-
-   if not ok then
-      error("Could not connect to netlink socket\n")
-      os.exit(1)
-   end
-
-   return sock
-end
 
 function run(args)
    args = common.parse_command_line(args, { command='listen' })
@@ -353,7 +88,9 @@ function run(args)
    require('lib.stream.compat').install()
 
    leader:nonblock()
-      
+   
+   local config_update_requests   = queue.new()
+
    local pending_netlink_requests = queue.new()
    local pending_snabb_requests   = queue.new()
    local pending_snabb_replies    = queue.new()
@@ -435,21 +172,6 @@ function run(args)
 
    local config_changed = false
 
-   -- Received netlink events require reconfiguration of snabb via the config leader
-   local function handle_netlink_events()
-      while true do
-         local nlmsg = nl.read(nlsock, nil, 16384, false)
-
-         if nlmsg ~= nil then
-            for _, msg in ipairs(nlmsg) do
-               local req = netlink_handlers[msg.nl](msg)
-               if req then
-                  config_changed = true
-               end
-            end
-         end
-      end
-   end
 
    local function handle_config_changes()
       while true do
@@ -457,17 +179,6 @@ function run(args)
          if config_changed then
             pending_snabb_requests:put(util.update_config())
             config_changed = false
-         end
-      end
-   end
-
-   local function handle_pending_netlink_requests()
-      while true do
-         local nt = pending_netlink_requests:get()
-         local ok, err = nl.write(nlsock, nil, unpack(nt))
-
-         if not ok then
-            error('Unable to write to netlink socket: ', err)
          end
       end
    end
@@ -502,8 +213,12 @@ function run(args)
    end
 
 
-   fiber.spawn(util.exit_if_error(handle_netlink_events))
-   fiber.spawn(util.exit_if_error(handle_pending_netlink_requests))
+   -- Reads inbound netlink requests. Sends `true` on config_update_requests when config has changed
+   fiber.spawn(netlink.return_inbound_handler(config_update_requests))
+
+   -- Reads outbound netlink requests from pending_netlink_requests queue and sends them to netlink socket
+   fiber.spawn(netlink.return_outbound_handler(pending_netlink_requests))
+
    fiber.spawn(util.exit_if_error(handle_pending_snabb_requests))
    fiber.spawn(util.exit_if_error(handle_pending_snabb_replies))
    fiber.spawn(util.exit_if_error(load_snabb_config))
