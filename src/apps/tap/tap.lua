@@ -25,6 +25,8 @@ Tap = { }
 Tap._config = {
    name = { required = true },
    io_errors = { default = true },
+   multi_queue = { default = false },
+   master = { default = false },
    mtu = { default = 1514 },
    mtu_fixup = { default = true },
    mtu_offset = { default = 14 },
@@ -103,11 +105,16 @@ function Tap:new (conf)
    end
    conf = lib.parse(conf, self._config)
 
+
    local ephemeral = not S.stat('/sys/class/net/'..conf.name)
    local fd, err = S.open("/dev/net/tun", "rdwr, nonblock");
    assert(fd, "Error opening /dev/net/tun: " .. tostring(err))
    local ifr = t.ifreq()
-   ifr.flags = "tap, no_pi"
+   if conf.multi_queue then
+      ifr.flags = "tap, no_pi, multi_queue"
+   else
+      ifr.flags = "tap, no_pi"
+   end 
    ifr.name = conf.name
    local ok, err = fd:ioctl("TUNSETIFF", ifr)
    if not ok then
@@ -115,53 +122,65 @@ function Tap:new (conf)
       error("ioctl(TUNSETIFF) failed on /dev/net/tun: " .. tostring(err))
    end
 
-   -- A dummy socket to perform SIOC{G,S}IF* ioctl() calls. Any
-   -- PF/type would do.
-   local sock, err = S.socket(const.AF.PACKET, const.SOCK.RAW, 0)
-   if not sock then
-      fd:close()
-      error("Error creating ioctl socket for tap device: " .. tostring(err))
+   local self = {  
+      fd = fd,
+      ifr = ifr,
+      name = conf.name,
+      status_timer = lib.throttle(0.001),
+      pkt = packet.allocate(),
+      master = conf.master,
+      multi_queue = conf.multi_queue,
+      shm = { 
+         rxbytes   = {counter},
+         rxpackets = {counter},
+         rxmcast   = {counter},
+         rxbcast   = {counter},
+         txbytes   = {counter},
+         txpackets = {counter},
+         txmcast   = {counter},
+         txbcast   = {counter},
+         type      = {counter, 0x1001}, -- propVirtual
+         mtu       = {counter, conf.mtu},
+         speed     = {counter, 0},
+      }
+   }
+
+   -- Only perform ioctl calls from the master process if configured for multiqueue
+   if conf.master or not conf.multi_queue then
+      -- A dummy socket to perform SIOC{G,S}IF* ioctl() calls. Any
+      -- PF/type would do.
+      local sock, err = S.socket(const.AF.PACKET, const.SOCK.RAW, 0)
+      if not sock then
+         fd:close()
+         error("Error creating ioctl socket for tap device: " .. tostring(err))
+      end
+      self.sock = sock
+
+      if ephemeral then
+         -- Set status to "up"
+         _status(sock, ifr, conf.io_errors, 1)
+      end
+      local mtu_eff = conf.mtu - (conf.mtu_fixup and conf.mtu_offset) or 0
+      local mtu_set = conf.mtu_set
+      if mtu_set == nil then
+         mtu_set = ephemeral
+      end
+      if mtu_set then
+         _mtu(sock, ifr, mtu_eff)
+      else
+         local mtu_configured = _mtu(sock, ifr)
+         assert(mtu_configured == mtu_eff,
+               "Mismatch of IP MTU on tap device " .. conf.name
+                  .. ": expected " .. mtu_eff .. ", configured "
+                  .. mtu_configured)
+      end
+
+
+      self.shm.macaddr = {counter, _macaddr(sock, ifr)}
+      self.shm.status  = {counter, _status(sock, ifr, conf.io_errors)}
    end
 
-   if ephemeral then
-      -- Set status to "up"
-      _status(sock, ifr, conf.io_errors, 1)
-   end
-   local mtu_eff = conf.mtu - (conf.mtu_fixup and conf.mtu_offset) or 0
-   local mtu_set = conf.mtu_set
-   if mtu_set == nil then
-      mtu_set = ephemeral
-   end
-   if mtu_set then
-      _mtu(sock, ifr, mtu_eff)
-   else
-      local mtu_configured = _mtu(sock, ifr)
-      assert(mtu_configured == mtu_eff,
-             "Mismatch of IP MTU on tap device " .. conf.name
-                .. ": expected " .. mtu_eff .. ", configured "
-                .. mtu_configured)
-   end
-
-   return setmetatable({fd = fd,
-                        sock = sock,
-                        ifr = ifr,
-                        name = conf.name,
-                        status_timer = lib.throttle(0.001),
-                        pkt = packet.allocate(),
-                        shm = { rxbytes   = {counter},
-                                rxpackets = {counter},
-                                rxmcast   = {counter},
-                                rxbcast   = {counter},
-                                txbytes   = {counter},
-                                txpackets = {counter},
-                                txmcast   = {counter},
-                                txbcast   = {counter},
-                                type      = {counter, 0x1001}, -- propVirtual
-                                status    = {counter, _status(sock, ifr, conf.io_errors)},
-                                mtu       = {counter, conf.mtu},
-                                speed     = {counter, 0},
-                                macaddr   = {counter, _macaddr(sock, ifr)} }},
-      {__index = Tap})
+   return setmetatable(self, {__index = Tap})
 end
 
 function Tap:status()
@@ -171,7 +190,7 @@ end
 function Tap:pull ()
    local l = self.output.output
    if l == nil then return end
-   if self.status_timer() then
+   if self.status_timer() and (self.master or not self.multi_queue) then
       self:status()
    end
    for i=1,engine.pull_npackets do

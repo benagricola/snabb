@@ -33,7 +33,7 @@ local rupda_flags = c.NLM_F('request')
 
 local schema_name = 'snabb-router-v1'
 
-snabb_config = {}
+config = {}
 
 has_changed = function(existing, new) 
    for k, v in pairs(new) do
@@ -44,7 +44,7 @@ has_changed = function(existing, new)
    return false
 end
 
-get_config = function(config, ...)
+get_config = function(...)
    for _, pitem in ipairs({...}) do
       if config ~= nil then
          config = config[pitem]
@@ -55,7 +55,7 @@ get_config = function(config, ...)
    return config
 end
 
-set_config = function(config, value, ...)
+set_config = function(value, ...)
    local vars = {...}
    local v = #vars-1
    for i=1,v do
@@ -73,7 +73,7 @@ end
 -- Update top-level config instance at `path`
 update_config = function()
    local xpath = '/'
-   local config = common.serialize_config(snabb_config, schema_name, xpath)
+   local config = common.serialize_config(config, schema_name, xpath)
    return { 
       method = 'set-config',
       args = { 
@@ -95,7 +95,7 @@ end
 
 get_interface_from_resource = function(resource)
    for _, res in ipairs(resource) do
-      local res = get_config(snabb_config, 'interfaces', 'interface', res)
+      local res = get_config('interfaces', 'interface', res)
       if res then
          return res
       end

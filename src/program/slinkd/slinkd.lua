@@ -96,37 +96,7 @@ function run(args)
    local pending_snabb_replies    = queue.new()
 
 
-   local nlsock = connect_netlink("ROUTE", {
-         "LINK",
-         "NEIGH",
-         -- We don't need local IPaddr info right now
-         -- "IPV4_IFADDR",
-         -- "IPV6_IFADDR",
-         "IPV4_ROUTE",
-         --"IPV6_ROUTE"
-      }
-   )
 
-
-   -- nlmsg    (ntype, flags, af, ...)
-   -- nl.write (sock, dest, ntype, flags, af, ...)
-   local netlink_dump_reqs = {
-      { c.RTM.GETLINK, rdump_flags, nil, t.rtgenmsg, { rtgen_family = c.AF.PACKET } }, -- Get Links
-      { c.RTM.GETNEIGH, rdump_flags, c.AF.INET, t.ndmsg, t.ndmsg{ family = c.AF.INET } },    -- Get Neighbours
-
-      --{ c.RTM.GETADDR, rdump_flags, c.AF.INET, t.ifaddrmsg, { ifa_family = c.AF.INET } },   -- Get IPv4 Addrs
-      --{ c.RTM.GETADDR, rdump_flags, c.AF.INET6, t.ifaddrmsg, { ifa_family = c.AF.INET6 } }, -- Get IPv6 Addrs
-
-      { c.RTM.GETROUTE, rroot_flags, c.AF.INET, t.rtmsg, t.rtmsg{ family = c.AF.INET, type = c.RTN.UNICAST } },   -- Get IPv4 Routes
-      --{ c.RTM.GETROUTE, rroot_flags, c.AF.INET6, t.rtmsg, t.rtmsg{ family = c.AF.INET6, type = c.RTN.UNICAST } }, -- Get IPv6 Routes
-   }
-
-   -- Ask for netlink dump on slinkd start
-   local function request_netlink_dump()
-      for _, req in ipairs(netlink_dump_reqs) do
-         pending_netlink_requests:put(req)
-      end
-   end
 
    local function load_snabb_config()
       local req = {
@@ -164,7 +134,7 @@ function run(args)
             end
 
             -- Only request netlink dump once snabb config is loaded
-            fiber.spawn(util.exit_if_error(request_netlink_dump))
+            fiber.spawn(netlink.request_dump('link, neigh, ipv4-route', pending_netlink_requests)))
          end
       }
       pending_snabb_requests:put(req)
@@ -213,8 +183,16 @@ function run(args)
    end
 
 
+   local nl_type   = "ROUTE"
+   local nl_groups = {
+      "LINK",
+      "NEIGH",
+      "IPV4_ROUTE",
+      --"IPV6_ROUTE"
+   }
+
    -- Reads inbound netlink requests. Sends `true` on config_update_requests when config has changed
-   fiber.spawn(netlink.return_inbound_handler(config_update_requests))
+   fiber.spawn(netlink.return_inbound_handler(nl_type, nl_groups, config_update_requests))
 
    -- Reads outbound netlink requests from pending_netlink_requests queue and sends them to netlink socket
    fiber.spawn(netlink.return_outbound_handler(pending_netlink_requests))
