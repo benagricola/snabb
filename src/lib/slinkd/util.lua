@@ -15,12 +15,15 @@ local ipv4 = require("lib.protocol.ipv4")
 local socket = require("lib.stream.socket")
 local yang = require("lib.yang.yang")
 local yang_util = require("lib.yang.util")
+local data    = require("lib.yang.data")
+local path_data    = require("lib.yang.path_data")
 local rpc = require("lib.yang.rpc")
 local data = require("lib.yang.data")
 local path_lib = require("lib.yang.path")
 local common = require("program.config.common")
 
 local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
+
 
 local c           = S.c
 local nl          = S.nl
@@ -31,9 +34,24 @@ local rdump_flags = c.NLM_F('request', 'dump')
 local rroot_flags = c.NLM_F('request', 'root')
 local rupda_flags = c.NLM_F('request')
 
+family_path = {
+   [c.AF.INET]  = '/routing/family-v4',
+   [c.AF.INET6] = '/routing/family-v6',
+}
+
 local schema_name = 'snabb-router-v1'
 
 config = {}
+
+print = function(...)
+   local o = {}
+   for _, v in ipairs({...}) do
+      table.insert(o, tostring(v))
+   end
+   io.stdout:write_chars(table.concat(o, " ") .. "\n")
+   io.stdout:flush_output()
+end
+
 
 has_changed = function(existing, new) 
    for k, v in pairs(new) do
@@ -44,29 +62,55 @@ has_changed = function(existing, new)
    return false
 end
 
-get_config = function(...)
-   for _, pitem in ipairs({...}) do
-      if config ~= nil then
-         config = config[pitem]
-      else
-         return nil
-      end
-   end
-   return config
+local xpath_item = function(path, key, value) return
+   string.format("%s[%s=%s]", path, key, value)
 end
 
-set_config = function(value, ...)
-   local vars = {...}
-   local v = #vars-1
-   for i=1,v do
-      local p = vars[i]
-      if config ~= nil then
-         config = config[p]
-      else
-         return nil
-      end
+local schema
+local function get_schema()
+   if not schema then
+      schema = yang.load_schema_by_name(schema_name)
    end
-   config[vars[v+1]] = value
+   return schema
+end
+
+local router_grammar
+local function get_grammar(root)
+   if not router_grammar then
+      router_grammar = data.config_grammar_from_schema(get_schema())
+   end
+   return router_grammar
+end
+
+get_config = function(path, key, value)
+   local grammar = get_grammar()
+
+   if key then
+      path = xpath_item(path, key, value)
+   end
+
+   return pcall(path_data.resolver(grammar, path), config)
+end
+
+add_config = function(path, subconfig)
+   print('Adding path ' .. path)
+   local adder = path_data.adder_for_schema_by_name(schema_name, path)
+   return adder(config, subconfig)
+end
+
+set_config = function(path, key, value, subconfig)
+   path = xpath_item(path, key, value)
+
+   print('Setting path ' .. path .. ', overriding existing value')
+   local setter = path_data.setter_for_schema_by_name(schema_name, path)
+   return setter(config, subconfig)
+end
+
+remove_config = function(path, key, value)
+   path = xpath_item(path, key, value)
+   print('Removing path ' .. path)
+   local remover = path_data.remover_for_schema_by_name(schema_name, path)
+   return remover(config)
 end
 
 

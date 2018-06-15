@@ -2,6 +2,7 @@ module(..., package.seeall)
 
 local S = require("syscall")
 local ffi = require("ffi")
+
 local fiber = require("lib.fibers.fiber")
 local queue = require("lib.fibers.queue")
 local cltable   = require('lib.cltable')
@@ -29,172 +30,138 @@ local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
 local c           = S.c
 local nl          = S.nl
 local t           = S.t
-local split       = S.h.split
 
 local RTM         = c.RTM
 local rdump_flags = c.NLM_F('request', 'dump')
 local rroot_flags = c.NLM_F('request', 'root')
 local rupda_flags = c.NLM_F('request')
 
+
+-- DO NOT CHANGE
+-- This means 'dynamic' neighbours start at 3
+-- Neighbour 1 means 'send to control' and does not exist
+-- Neighbour 2 means 'blackhole' and does not exist
+-- Neighbour 0 does not work, this is used internally by the LPM libraries
+local neigh_index     = 2
+local neigh_index_map = {}
+local link_index_map  = {}
+
 local schema_name = 'snabb-router-v1'
 
-local new_neigh = function(index, address, interface, mac, state)
-   neigh_index_map[address] = index
-   local available = false
-   
-   if (state >= c.NUD.REACHABLE and state ~= c.NUD.FAILED) then
-      available = true
-   end
+local snabb_neigh_from_netlink_neigh = function(neigh)
+   local available = (neigh.state >= c.NUD.REACHABLE and neigh.state ~= c.NUD.FAILED)
 
    return {
-      index     = index,
-      interface = interface,
-      address   = address,
-      mac       = mac,
+      index     = neigh.index,
+      interface = neigh.ifindex,
+      address   = tostring(neigh.dest),
+      mac       = tostring(neigh.lladdr),
       available = available,
+      index     = 1,
    }
 end
 
-local new_route = function(dst, gateway)
+local snabb_route_from_netlink_route = function(route, index)
    return {
-      dst     = dst,
-      gateway = gateway,
+      dst     = tostring(route.dest) .. "/" .. tostring(route.dst_len),
+      gateway = index,
    }
 end
 
-local new_link = function(index, name, mac, mtu, up, state)
+local snabb_link_from_netlink_link = function(link)
    return {
-      index    = index,
-      name     = name,
-      mac      = mac,
-      mtu      = mtu,
-      up       = up,
-      state    = state,
+      index    = link.index,
+      name     = link.name,
+      mac      = tostring(link.macaddr),
+      mtu      = link.mtu + 14, -- Linux MTU is L3 whereas Snabb mtu works at L2
+      up       = link.flags[c.IFF.UP],
+      state    = link.operstate
    }
 end
 
 local netlink_handlers = {
    [RTM.NEWLINK] = function(link)
       -- Loopback and non-mac interfaces not supported
-      if link.loopback or not link.macaddr then return end
-
-      local device = util.get_config('hardware', 'device', link.name)
-
-      if not device then return end
+      if link.loopback or not link.macaddr then return false end
 
       print("[LINK] ADD", link)
 
-      local new = new_link(
-         link.index, 
-         link.name, 
-         tostring(link.macaddr),
-         link.mtu + 14,
-         link.flags[c.IFF.UP],
-         link.operstate
-      )
-   
-      local existing = util.get_config('interfaces', 'interface', link.name)
-   
-      if existing then
-         if not util.has_changed(existing, new) then
-            return
-         end
-      end
-   
-      util.set_config(new, 'interfaces', 'interface', link.name)
-      link_index_map[link.index] = link.name
+      local ok, device = util.get_config('/hardware/device', 'name', link.name)
 
-      return true
+      -- Just return if device is not recognized
+      if not ok or not device then return false end
+      
+      local new     = snabb_link_from_netlink_link(link)
+      local ok, old = util.get_config('/interfaces/interface', 'name', link.name)
+
+      if not ok or not old then
+         link_index_map[link.index] = link.name
+         return util.add_config('/interfaces/interface', {[link.name] = new})
+      end
+
+      if util.has_changed(old, new) then
+         return util.set_config('/interfaces/interface', 'name', link.name, new)
+      end
+
+      return false
    end,
    [RTM.DELLINK] = function(link)
-      local existing = util.get_config('interfaces', 'interface', link.name)
+      if link.loopback or not link.macaddr then return false end
 
-      if not existing then
-         return nil
+      local ok, old = util.get_config('/interfaces/interface', 'name', link.name)
+
+      if not (ok and old) then
+         return false
       end
 
       print("[LINK] DEL", link)
-
-      util.set_config(nil, 'interfaces', 'interface', link.name)
       link_index_map[link.index] = nil
-      return true
+      return util.remove_config('/interfaces/interface', 'name', link.name)
    end,
    [RTM.NEWNEIGH] = function(neigh)
-      -- TODO: If LLADDR is nil but rest OK then this means lladdr has expired
-      -- So we want to update the neighbour anyway.
-
-      local link = link_index_map[neigh.ifindex]
-      if not link then return end
-
       print("[NEIGH] ADD", neigh)
 
-      local new, existing
+      -- Neighbours exist on a link
+      local link = link_index_map[neigh.ifindex]
+      if not link then return false end
 
-      local dst = tostring(neigh.dest)
-      local path = family_path[neigh.family]
+      local path = util.family_path[neigh.family]
 
-      local cur_neigh = neigh_index_map[dst]
+      local new = snabb_neigh_from_netlink_neigh(neigh)
 
-      if cur_neigh then
-         existing = util.get_config('routing', path, 'neighbour', tostring(cur_neigh))
-      end
+      local ok, index_map = util.get_config(path .. '/neighbour-index-by-address', 'address', new.address)
 
-      if existing then
-         new = new_neigh(
-            existing.index,
-            dst, 
-            neigh.ifindex,
-            tostring(neigh.lladdr),
-            neigh.state
-         )
-
-         if not util.has_changed(existing, new) then
-            return
-         end
-      else
+      if not ok or not index_map then
+         -- If this is a new neighbour, allocate a neighbour index
          neigh_index = neigh_index + 1
+         new.index = tostring(neigh_index)
+         util.add_config(path ..'/neighbour',  {[new.index] = new})
+         util.add_config(path ..'/neighbour-index-by-address',  {[new.address] = { index = new.index }})
+         return true
+      else
+         local ok, old = util.get_config(path .. '/neighbour', 'index', index_map.index)
+         assert(ok and old, 'Unable to get existing neighbour by index ' .. index_map.index .. ' even though it exists in the map!')
+         new.index = index_map.index
 
-         new = new_neigh(
-            neigh_index,
-            dst, 
-            neigh.ifindex,
-            tostring(neigh.lladdr),
-            neigh.state
-         )
-
-      end
-
-      util.set_config(new, 'routing', path, 'neighbour', tostring(new.index))
-
-      -- Create new route for this directly connected system
-      local rt_dst = dst .. "/32"
-
-      local new_route = new_route(rt_dst, tostring(new.index))
-
-      local existing_route = util.get_config('routing', path, 'route', rt_dst)
-
-      if existing_route then
-         if not util.has_changed(existing_route, new_route) then
-            return true
+         if util.has_changed(old, new) then
+            return util.set_config(path .. '/neighbour', 'index', new.index, new)
          end
+         return false
       end
-
-      util.set_config(new_route, 'routing', path, 'route', rt_dst)
-      return true
    end,
    [RTM.DELNEIGH] = function(neigh)
+      print("[NEIGH] DEL", neigh)
+
       local dst = tostring(neigh.dest)
-      local path = family_path[neigh.family]
+      local path = util.family_path[neigh.family]
 
       local cur_neigh   = neigh_index_map[dst]
 
       local existing = util.get_config('routing', path, 'neighbour', tostring(cur_neigh))
 
       if not existing then
-         return nil
+         return false
       end
-
-      print("[NEIGH] DEL", neigh)
 
       local rt_dst = dst .. "/32"
 
@@ -207,12 +174,12 @@ local netlink_handlers = {
       util.set_config(nil, 'routing', path, 'neighbour', existing.index)
       return true
    end,
-   [RTM.NEWROUTE] = function(route)
+   [98] = function(route)
       print("[ROUTE] ADD", route, ' Type ', route.rtmsg.rtm_type)
 
       if route.family == c.AF.INET6 or route.rtmsg.rtm_type == c.RTN.BROADCAST or route.rtmsg.rtm_type == c.RTN.MULTICAST then
-         print('Unsupported route type')
-         return
+         util.print('Unsupported route type')
+         return false
       end
 
       local local_route     = route.rtmsg.rtm_type == c.RTN.LOCAL
@@ -224,7 +191,7 @@ local netlink_handlers = {
       local dst         = tostring(route.dest) .. "/" .. tostring(route.dst_len)
       local cur_neigh   = neigh_index_map[gateway]
    
-      local path = family_path[route.family]
+      local path = util.family_path[route.family]
 
       local existing_neigh 
       local existing_route = util.get_config('routing', path, 'route', dst)
@@ -264,28 +231,28 @@ local netlink_handlers = {
 
       if existing_route then
          if not util.has_changed(existing_route, new) then
-            return
+            return false
          end
       end
 
       util.set_config(new, 'routing', path, 'route', dst)
       return true
    end,
-   [RTM.DELROUTE] = function(route)
+   [99] = function(route)
+      print("[ROUTE] DEL", route)
+
       if route.family == c.AF.INET6 or route.rtmsg.rtm_type == c.RTN.BROADCAST or route.rtmsg.rtm_type == c.RTN.MULTICAST then
-         return
+         return false
       end
 
       local dst  = tostring(route.dest) .. "/" .. tostring(route.dst_len)
-      local path = family_path[route.family]
+      local path = util.family_path[route.family]
 
       local existing = util.get_config('routing', path, 'route', dst)
 
       if not existing then
-         return nil
+         return false
       end
-
-      print("[ROUTE] DEL", route)
 
       util.set_config(nil, 'routing', path, 'route', dst)
       return true
@@ -303,17 +270,15 @@ local netlink_dump = {
 
 -- Ask for netlink dump on slinkd start
 function request_dump(types, output_queue)
-   if type(types) == 'string' then
-      types = split(",", types)
-   end
    return util.exit_if_error(function()
       for _, type in ipairs(types) do
+         util.print('Requesting netlink dump of type ' .. type)
          local args = netlink_dump[type]
          if args ~= nil then
-            pending_netlink_requests:put(output_queue)
+            output_queue:put(args)
          end
       end
-   end
+   end)
 end
 
 -- Try to connect to socket as soon as it opens
@@ -329,37 +294,51 @@ local function connect_netlink(type, groups)
    until true
 end
 
-function return_inbound_handler(type, group, output_queue)
-   return util.exit_if_error(function()
-      local sock = connect_netlink(type, group)
+function return_netlink_connector(type, groups)
+   local sock = nil
+   return function(close)
+      if close and sock then
+         sock:close()
+         sock = nil
+      end
+      if not sock then
+         sock = connect_netlink(type, groups)
+      end
+      return sock
+   end
+end
 
+function return_inbound_handler(connector, output_queue)
+   return util.exit_if_error(function()
+      local sock = connector()
       while true do
          local ok, nlmsg = pcall(nl.read, sock, nil, 16384, false)
-
          if ok and nlmsg ~= nil then
             for _, msg in ipairs(nlmsg) do
-               output_queue:put(netlink_handlers[msg.nl](msg))
+               print('Received netlink message ' .. tostring(msg.nl))
+               local parser = netlink_handlers[msg.nl]
+               if parser then
+                  output_queue:put(parser(msg))
+               else
+                  print('No parser for netlink message ID ' .. tostring(msg.nl))
+               end
             end
          else
             -- Trigger socket reconnect if unable to read netlink msg
-            sock:close()
-            sock = connect_netlink(type, group)
+            sock = connector(true)
          end
       end
    end)
 end
 
-function return_outbound_handler(type, group, input_queue)
+function return_outbound_handler(connector, input_queue)
    return util.exit_if_error(function()
-      local sock = connect_netlink(type, group)
-
+      local sock = connector()
       while true do
-         local nt = input_queue:get()
-         local ok, wrok, err = pcall(nl.write, sock, nil, unpack(nt))
-
-         if not (ok and wrok and not err) then
-            sock:close()
-            sock = connect_netlink(type, group)
+         local ok, len, err = pcall(nl.write, sock, nil, unpack(input_queue:get()))
+         print(ok, len, err)
+         if not ok then
+            sock = connector(true)
          end
       end
    end)

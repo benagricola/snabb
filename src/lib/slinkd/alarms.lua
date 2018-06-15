@@ -77,7 +77,7 @@ function return_handler(instance_id, pending_netlink_requests)
    return util.exit_if_error(function()
       local sock = connect_notifications(instance_id)
       while true do
-         local ok, event = pcall(json.read_json_object, sock)
+         local ok, event = pcall(json.read_json, sock)
 
          if ok and event ~= nil then
             local handler = event_handlers[event.event][event.alarm_type_id]
@@ -89,7 +89,9 @@ function return_handler(instance_id, pending_netlink_requests)
             end
          else
             -- Trigger socket reconnect if unable to read json object
-            sock:close()
+            if sock then
+               sock:close()
+            end
             sock = connect_notifications(instance_id)
          end
       end

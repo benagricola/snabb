@@ -735,6 +735,7 @@ end
 function CallbackRateAlarm:is_active(value)
    return (value - self.last_value > self.limit)
 end
+CallbackRateAlarm.check = Alarm.check
 
 
 CounterAlarm = {}
@@ -746,6 +747,7 @@ end
 function CounterAlarm:get_value()
    return counter.read(self.object.shm[self.counter_name])
 end
+CounterAlarm.check = Alarm.check
 
 
 --
