@@ -3,18 +3,16 @@ module(..., package.seeall)
 
 -- A slightly-less-limited json library that should handle all JSON syntax.
 -- Tables are encoded to a JSON array if all their keys are valid integers.
+-- Number syntax checking is weak, and relies on Lua's tonumber() implementation
 -- NOTE: Integer-indexed sparse tables are encoded as lists as well! Be careful.
 
--- nil is represented as an empty table 
+-- nil is represented by identity as an empty table 
 local NIL = {}
 local constants = {
    ["true"]  = true, 
    ["false"] = false, 
    ["null"]  = NIL 
 }
-
--- Forward declarations for recursively called functions
-local read_json_string, read_json_type, write_json_string, write_json_type
 
 local function take_while(input, pat)
    local out = {}
@@ -100,18 +98,18 @@ read_json_string = function(input)
       end
       table.insert(parts, part)
    end
+   skip_whitespace(input)
    return table.concat(parts)
 end
 
 local function read_json_array(input)
-   skip_whitespace(input)
    consume(input, "[")
    skip_whitespace(input)
    local ret = {}
    if not check(input, "]") then
       repeat
          skip_whitespace(input)
-         local v = read_json_type(input)
+         local v = read_json(input)
          skip_whitespace(input)
          table.insert(ret, v)
       until not check(input, ",")
@@ -124,7 +122,7 @@ end
 
 local function read_json_scalar(input)
    skip_whitespace(input)
-   local v = take_while(input, '[0-9%-%.truefalsn]')
+   local v = take_while(input, '[0-9%-%+%.trueEfalsn]')
    skip_whitespace(input)
    if constants[v] ~= nil then
       return constants[v]
@@ -134,7 +132,32 @@ local function read_json_scalar(input)
    error('unparseable json number or boolean: '..v)
 end
 
-read_json_type = function(input)
+local function read_json_object(input)
+   consume(input, "{")
+   skip_whitespace(input)
+   local ret = {}
+   if not check(input, "}") then
+      repeat
+         skip_whitespace(input)
+         local k = read_json_string(input) -- JSON keys must be strings
+         if ret[k] then error('duplicate key: '..k) end
+         skip_whitespace(input)
+         consume(input, ":")
+         skip_whitespace(input)
+         ret[k] = read_json(input)
+         skip_whitespace(input)
+      until not check(input, ",")
+      skip_whitespace(input)
+      consume(input, "}")
+   end
+   skip_whitespace(input)
+   return ret
+end
+
+function read_json(input)
+   -- Return nil on EOF.
+   if input:peek_byte() == nil then return nil end
+   skip_whitespace(input)
    if peek(input, "{") then
       return read_json_object(input) 
    elseif peek(input, "[") then
@@ -147,29 +170,6 @@ read_json_type = function(input)
    error('unparseable json type, starting: '..tostring(input:peek_byte()))
 end
 
-function read_json_object(input)
-   skip_whitespace(input)
-   -- Return nil on EOF.
-   if input:peek_byte() == nil then return nil end
-   consume(input, "{")
-   skip_whitespace(input)
-   local ret = {}
-   if not check(input, "}") then
-      repeat
-         skip_whitespace(input)
-         local k = read_json_string(input) -- JSON keys must be strings
-         if ret[k] then error('duplicate key: '..k) end
-         skip_whitespace(input)
-         consume(input, ":")
-         skip_whitespace(input)
-         ret[k] = read_json_type(input)
-         skip_whitespace(input)
-      until not check(input, ",")
-      skip_whitespace(input)
-      consume(input, "}")
-   end
-   return ret
-end
 
 local function write_json_null(output)
    return output:write_chars('null')
@@ -179,7 +179,7 @@ local function write_json_scalar(output, var)
    return output:write_chars(tostring(var))
 end
 
-write_json_string = function(output, str)
+local function write_json_string(output, str)
    output:write_chars('"')
    local pos = 1
    while pos <= #str do
@@ -203,33 +203,14 @@ write_json_string = function(output, str)
    output:write_chars('"')
 end
 
-write_json_type = function(output, var)
-   local tp = type(var)
-
-   if tp == 'table' then
-      if var == NIL then
-         return write_json_null(output)
-      end
-
-      -- TODO: Choose array or object
-      return write_json_object(output, var)
-   elseif tp == 'string' then
-      return write_json_string(output, var)
-   elseif tp == 'boolean' or tp == 'number' then
-      return write_json_scalar(output, var)
-   end
-
-   return error('unable to serialize value of unknown type: '..tp)
-end
-
-write_json_object = function(output, obj)
+local function write_json_object(output, obj)
    output:write_chars('{')
    local comma = false
    for k,v in pairs(obj) do
       if comma then output:write_chars(',') else comma = true end
       write_json_string(output, k) -- JSON keys must be strings
       output:write_chars(':')
-      write_json_type(output, v)
+      write_json(output, v)
    end
    output:write_chars('}')
 end
@@ -238,19 +219,21 @@ local function write_json_array(output, obj)
    output:write_chars('[')
    for i,v in ipairs(obj) do
       if i > 1 then output:write_chars(',') end
-      write_json_type(output, v)
+      write_json(output, v)
    end
    output:write_chars(']')
 end
 
-write_json_type = function(output, var)
+function write_json(output, var)
    local tp = type(var)
+   -- nil is represented and compared by identity as 
+   -- an empty table. This must be checked before 
+   -- other table instances.
    if var == NIL then
       return write_json_null(output)
-   end
-   if tp == 'table' then
+   elseif tp == 'table' then
       for k, v in pairs(var) do
-         if not (type(k) == 'number' and math.floor(k)==k and 1<=k) then
+         if not (type(k) == 'number' and math.floor(k) == k and 1 <= k) then
             return write_json_object(output, var)
          end
       end
@@ -260,7 +243,6 @@ write_json_type = function(output, var)
    elseif tp == 'boolean' or tp == 'number' then
       return write_json_scalar(output, var)
    end
-
    return error('unable to serialize value of unknown type: '..tp)
 end
 
@@ -275,19 +257,32 @@ function selftest ()
       tmp:write(" ") -- whitespace sentinel on the end.
       for i = 1,2 do
          tmp:seek('set', 0)
-         local parsed = read_json_object(tmp)
+         local parsed = read_json(tmp)
          assert(equal(parsed, obj))
-         assert(read_json_object(tmp) == nil)
+         assert(read_json(tmp) == nil)
          assert(tmp:read_char() == nil)
 
          tmp = tmpfile()
-         write_json_object(tmp, parsed)
+         write_json(tmp, parsed)
          tmp:write(' ') -- sentinel
       end
    end
+
+   -- Basic objects, lists, constants and numbers
    test_json('{}', {})
+   test_json('[]', {})
+   test_json('"foobar"', 'foobar')
+   test_json('true', true)
+   test_json('false', false)
+   test_json('null', NIL)
+   test_json('9.45', 9.45)
+
+   -- Objects and lists with members
    test_json('{"foo":"bar"}', {foo='bar'})
    test_json('{"foo":"bar","baz":"qux"}', {foo='bar', baz='qux'})
+   test_json('["foo","bar","baz","qux"]', {'foo','bar','baz','qux'})
+
+   -- Leading, trailing spaces and unicode
    test_json('{ "foo" : "bar" , "baz" : "qux" }',
              {foo='bar', baz='qux'})
    test_json('{ "fo\\u000ao" : "ba\\r " , "baz" : "qux" }',
@@ -301,6 +296,6 @@ function selftest ()
 
    -- Numbers and constants
    test_json('{"foo":1, "bar": 3, "baz": true, "fix": false, "neh": null}', {foo=1, bar=3, baz=true, fix=false, neh=NIL})
-
+   test_json('{"foo": -1, "bar": +1, "baz": -1E5, "fix": -0.9545e-1}', {foo=-1, bar=1, baz=-1e5, fix=-0.9545e-1})
    print('selftest: ok')
 end
