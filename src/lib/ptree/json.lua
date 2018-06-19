@@ -116,7 +116,6 @@ local function read_json_array(input)
       skip_whitespace(input)
       consume(input, "]")
    end
-   skip_whitespace(input)
    return ret
 end
 
@@ -155,9 +154,9 @@ local function read_json_object(input)
 end
 
 function read_json(input)
-   -- Return nil on EOF.
-   if input:peek_byte() == nil then return nil end
    skip_whitespace(input)
+   -- Return nil on EOF once whitespace has been ignored
+   if input:peek_byte() == nil then return nil end
    if peek(input, "{") then
       return read_json_object(input) 
    elseif peek(input, "[") then
@@ -167,7 +166,7 @@ function read_json(input)
    else
       return read_json_scalar(input)
    end
-   error('unparseable json type, starting: '..tostring(input:peek_byte()))
+   error('unparseable json, starting: '..tostring(input:peek_byte()))
 end
 
 

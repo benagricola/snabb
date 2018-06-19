@@ -34,12 +34,29 @@ local rdump_flags = c.NLM_F('request', 'dump')
 local rroot_flags = c.NLM_F('request', 'root')
 local rupda_flags = c.NLM_F('request')
 
-family_path = {
-   [c.AF.INET]  = '/routing/family-v4',
-   [c.AF.INET6] = '/routing/family-v6',
+local schema_name = 'snabb-router-v1'
+
+family_map = {
+   [c.AF.INET]   = 'ipv4',
+   [c.AF.INET6]  = 'ipv6'
 }
 
-local schema_name = 'snabb-router-v1'
+family_enum = function(num)
+   return family_map[num]
+end
+
+route_type_map = {
+   [c.RTN.UNICAST]     = 'unicast',
+   [c.RTN.LOCAL]       = 'local',
+   [c.RTN.ANYCAST]     = 'anycast',
+   [c.RTN.BLACKHOLE]   = 'blackhole',
+   [c.RTN.UNREACHABLE] = 'unreachable',
+   [c.RTN.PROHIBIT]    = 'prohibit'
+}
+
+route_type_enum = function(num)
+   return route_type_map[num]
+end
 
 config = {}
 

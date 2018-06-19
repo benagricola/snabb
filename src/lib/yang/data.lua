@@ -458,7 +458,9 @@ local function scalar_parser(keyword, argument_type, default, mandatory)
    local function finish(out)
       if out ~= nil then return out end
       if default then return parsev(default, keyword) end
-      if mandatory then error('missing scalar value: '..keyword) end
+      if mandatory then 
+         error('missing scalar value: '..keyword) 
+      end
    end
    return {init=init, parse=parse, finish=finish}
 end
@@ -769,6 +771,11 @@ local function value_serializer(typ)
 end
 
 local function print_yang_string(str, file)
+   if type(str) == 'number' then
+      print(str)
+      print(debug.traceback())
+   end
+   
    if #str == 0 then
       file:write("''")
    elseif str:match("^[^%s;{}\"'/]*$") then

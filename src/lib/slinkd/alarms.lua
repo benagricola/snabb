@@ -57,9 +57,6 @@ local event_handlers = {
             return print('Alarm notification for unknown interface ', alarm.resource)
          end
 
-        
-         util.set_config(util.snabb_config, interface, 'interfaces', 'interface', interface.name)
-
          -- If link is up, set down
          if interface.state == IF_OPER_UP then
             print('[ALARM] PHY DOWN ' .. interface.name)

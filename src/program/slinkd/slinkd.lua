@@ -1,6 +1,7 @@
 -- Use of this source code is governed by the Apache 2.0 license; see COPYING.
 module(..., package.seeall)
 
+local lib = require("core.lib")
 local fiber = require("lib.fibers.fiber")
 local queue = require("lib.fibers.queue")
 local mem = require("lib.stream.mem")
@@ -40,7 +41,6 @@ function run(args)
    leader:nonblock()
    
    local config_update_requests   = queue.new()
-
    local pending_netlink_requests = queue.new()
    local pending_snabb_requests   = queue.new()
    local pending_snabb_replies    = queue.new()
@@ -69,14 +69,14 @@ function run(args)
 
 
    local function handle_config_changes()
+      local throttle = lib.throttle(1)
       while true do
          repeat
             local update_config = config_update_requests:get()
-            if update_config then
+            if update_config and throttle() then
                pending_snabb_requests:put(util.update_config())
             end
          until update_config
-         sleep.sleep(1)
       end
    end
 
