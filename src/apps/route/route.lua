@@ -56,17 +56,20 @@ Route = {
 
 function Route:new(config)
    local o = {
-      config               = config,
-      fib_v4               = nil,
-      fib_v6               = nil,
-      debug                = config.debug,
-      neighbours_v4        = {}, -- Default empty cltable
-      neighbours_v6        = {}, -- Default empty cltable
-      sync_timer           = lib.throttle(0.1),
-      v4_build_timer       = lib.throttle(1),
-      v6_build_timer       = lib.throttle(1),
-      debug_timer          = lib.throttle(0.1),
-      ctr_names            = {
+      config                 = config,
+      fib_v4                 = nil,
+      fib_v6                 = nil,
+      debug                  = config.debug,
+      neighbours             = {}, -- Default empty cltable
+      gateway_counter        = neigh_blackhole + 1, -- First gateway index
+      gateway_index          = {},
+      gateway_addr           = {},
+      gateway_refs           = {},
+      sync_timer             = lib.throttle(0.1),
+      v4_build_timer         = lib.throttle(1),
+      v6_build_timer         = lib.throttle(1),
+      debug_timer            = lib.throttle(0.1),
+      ctr_names              = {
          'ipv4_rx',
          'ipv6_rx',
          'unkn_rx',
@@ -89,61 +92,83 @@ function Route:new(config)
       self.ctr[ctr_name] = 0
    end
 
-   -- Load V4 config, if specified
-   self:init_v4()
+   self:init()
 
-   -- Load V6 config, if specified
-   self:init_v6()
    return self
 end
 
-function Route:init_v4()
-   if self.config.routing.family_v4 then
-      local family_v4 = self.config.routing.family_v4
+function Route:init()
+   -- TODO: Implement IPv6
+   if self.config.routing then
+      local routing = self.config.routing
 
       -- Choose LPM implementation
-      local lpm_config = 'LPM4_'.. family_v4.lpm_implementation:lower()
-      local lpm_class = require('lib.lpm.'..lpm_config:lower())[lpm_config]
+      local v4_lpm_config = 'LPM4_'.. routing.ipv4_lpm_implementation:lower()
+      local v4_lpm_class = require('lib.lpm.'..v4_lpm_config:lower())[v4_lpm_config]
 
-      self.fib_v4 = lpm_class:new()
-
+      self.fib_v4 = v4_lpm_class:new()
       -- Add default next hop with index 0 (required! do not remove)
       self.fib_v4:add_string('0.0.0.0/0', 0)
 
       -- Convert neighbours to integer index
-      for k, v in pairs(family_v4.neighbour) do
-         self.neighbours_v4[tonumber(k)] = v
+      for address, neighbour in pairs(routing.neighbour) do
+         self:add_neighbour(neighbour)
       end
 
       -- Install config-loaded routes and build LPM
-      for dst, route in pairs(family_v4.route) do
-         self:add_v4_route(dst, route)
+      for dst, route in pairs(routing.route) do
+         if route.family == 'ipv4' then
+            self:add_v4_route(dst, route)
+         end
       end
 
-      -- Build LPM only after all 
       self:build_v4_route()
-      print('Init V4 Routing...')
    end
 end
 
-function Route:init_v6()
-   local config = self.config
-   if config.routing.family_v6 then
-      self.neighbours_v6 = config.routing.family_v6.neighbour
-   end
+function Route:add_neighbour(address, neighbour)
+   self.neighbours[address] = neighbour
 end
 
 -- Note that this does *not* lpm:build()
 function Route:add_v4_route(dst, route)
-   -- LPM for fast routing lookup once a neighbour is identified
+   local index
 
-   -- Add route with no connected next-hop (neigh)
-   self.fib_v4:add_string(dst, tonumber(route.gateway))
+   if route.type == 'blackhole' or route.type == 'prohibit' then
+      print('Route type is black hole')
+      index = neigh_blackhole
+   elseif route.type == 'local' then
+      print('Route type is local')
+      index = neigh_local
+   else
+      -- Normal routes, allocate index if not known already
+      index = self.gateway_addr[route.gateway]
+      if not index then
+         index = self.gateway_counter
+         self.gateway_addr[route.gateway] = index
+         self.gateway_index[index] = route.gateway
+         self.gateway_refs[route.gateway] = 1
+         self.gateway_counter = self.gateway_counter + 1
+      else
+         self.gateway_refs[route.gateway] = self.gateway_refs[route.gateway] + 1
+      end
+      print('Normal route, index is ' .. index)
+   end
+   self.fib_v4:add_string(dst, index)
 end
 
 function Route:remove_v4_route(dst, route)
    -- Convert integer to wire format
    self.fib_v4:remove_string(dst)
+   self.gateway_refs[route.gateway] = self.gateway_refs[route.gateway] - 1
+
+   -- Clean up gateway indexes if not referenced by any routes
+   if self.gateway_refs[route.gateway] < 1 then
+      local idx = self.gateway_addr[route.gateway]
+      self.gateway_index[index] = nil
+      self.gateway_addr[route.gateway] = nil
+      self.gateway_refs[route.gateway] = nil
+   end
 end
 
 function Route:build_v4_route()
@@ -343,19 +368,27 @@ function Route:push ()
    end
 end
 
+local function get_interface_by_name(interfaces, name)
+   for index, interface in pairs(interfaces) do
+      if interface.name == name then
+         return index, interface
+      end
+   end
+end
+
 -- Parse output links into table
 function Route:link ()
    local interfaces = self.config.interfaces.interface
 
    for name, l in pairs(self.output) do
       if type(name) == 'string' and name ~= 'control' then
-         local iface = interfaces[name]
-         self.output_links[iface.index] = { 
+         local index, iface = assert(get_interface_by_name(interfaces, name))
+         self.output_links[index] = { 
             name   = name, 
             link   = l,
             config = iface, 
          }
-         self.output_links_by_name[name] = iface.index
+         self.output_links_by_name[name] = index
       end
    end
 end

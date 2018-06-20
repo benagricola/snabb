@@ -86,7 +86,7 @@ local route_from_netlink = function(route)
    util.print('[ROUTE]', route)
 
    return {
-      dest    = tostring(route.dest),
+      dest    = tostring(route.dest) .. '/' .. tostring(route.dst_len),
       gateway = tostring(route.gw),
       family  = util.family_enum(route.family),
       type    = util.route_type_enum(type)
