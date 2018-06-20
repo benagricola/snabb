@@ -131,10 +131,10 @@ function convert_path(grammar, path)
    return ret
 end
 
-function parse_path (path)
+function parse_path(path)
    local depth = 0
    local t, token = {}, ''
-   local function insert_token ()
+   local function insert_token()
       table.insert(t, token)
       token = ''
    end
@@ -166,7 +166,10 @@ end
 
 function normalize_path(path)
    local ret = {}
-   for _,part in ipairs(parse_path(path)) do
+   if type(path) == 'string' then
+      path = parse_path(path)
+   end
+   for _,part in ipairs(path) do
       local str = part.name
       local keys = table_keys(part.query)
       table.sort(keys)
@@ -224,6 +227,8 @@ function selftest()
    parse_path('/alarms/alarm-list/alarm'..
               '[resource=alarms/alarm-list/alarm/related-alarm/resource]'..
               '[alarm-type-id=/alarms/alarm-list/alarm/related-alarm/alarm-type-id]')
+
+   local t = parse_path('/route[dest=0.0.0.0/0]')
 
    print("selftest: ok")
 end

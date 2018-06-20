@@ -24,6 +24,7 @@ local common = require("program.config.common")
 
 local alarms = require("lib.slinkd.alarms")
 local util = require("lib.slinkd.util")
+local config = require("lib.slinkd.config")
 
 local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
 
@@ -79,7 +80,7 @@ local route_from_netlink = function(route)
    local type = route.rtmsg.rtm_type
 
    if type >= c.RTN.THROW or type == c.RTN.BROADCAST 
-     or type == c.RTN.MULTICAST or type == c.RTN.UNSPEC then
+   or type == c.RTN.MULTICAST or type == c.RTN.UNSPEC then
       return nil
    end
 
@@ -102,109 +103,31 @@ local netlink_parsers = {
    [RTM.DELROUTE] = route_from_netlink,
 }
 
-local link_path      = '/interfaces/interface'
-local link_key       = 'index'
-local hardware_path  = '/hardware/device'
-local hardware_key   = 'name'
-local neighbour_path = '/routing/neighbour'
-local neighbour_key  = 'address'
-local route_path     = '/routing/route'
-local route_key      = 'dest'
-
--- TODO: Deduplicate these maybe?
-
-local get_path_by_key = function(path, key, value)
-   local ok, item = util.get_config(path, key, value)
-   if not ok or not item then
-      return nil
-   end
-   return item
-end
-
-local add_or_update_path_by_key = function(path, key, new)
-   local old = get_path_by_key(path, key, new[key])
-   if old ~= nil then
-      if util.has_changed(old, new) then
-         return util.set_config(path, key, new[key], new)
-      end
-      return false
-   end
-   return util.add_config(path,  {[new[key]] = new})
-end
-
-local remove_path_by_key = function(path, key, value)
-   if not get_path_by_key(path, key, value) then
-      return false
-   end
-   return util.remove_config(path, key, value)
-end
-
-local get_device_by_name = function(name)
-   return get_path_by_key(hardware_path, hardware_key, name)
-end
-
-local get_link_by_index = function(index)
-   return get_path_by_key(link_path, link_key, index)
-end
-
-local add_or_update_link = function(new)
-   return add_or_update_path_by_key(link_path, link_key, new)
-end
-
-local remove_link_by_index = function(index)
-   return remove_path_by_key(link_path, link_key, index)
-end
-
-local get_neighbour_by_address = function(address)
-   return get_path_by_key(neighbour_path, neighbour_key, address)
-end
-
-local add_or_update_neighbour = function(new)
-   return add_or_update_path_by_key(neighbour_path, neighbour_key, new)
-end
-
-local remove_neighbour_by_address = function(address)
-   return remove_path_by_key(neighbour_path, neighbour_key, address)
-end
-
-local get_route_by_dst = function(dst)
-   return get_path_by_key(route_path, route_key, dst)
-end
-
-local add_or_update_route = function(new)
-   return add_or_update_path_by_key(route_path, route_key, new)
-end
-
-local remove_route_by_dst = function(dst)
-   return remove_path_by_key(route_path, route_key, dst)
-end
-
-
 local netlink_handlers = {
    [RTM.NEWLINK] = function(link)
       -- Only manage links with matching devices
-      if not get_device_by_name(link.name) then return false end
-      return add_or_update_link(link)  
+      if not config.get_device_by_name(link.name) then return false end
+      return config.add_or_update_link(link)  
    end,
    [RTM.DELLINK] = function(link)
-      if not get_link_by_index(link.index) then return false end
-      return remove_link_by_index(link.index)
+      if not config.get_link_by_index(link.index) then return false end
+      return config.remove_link_by_index(link.index)
    end,
    [RTM.NEWNEIGH] = function(neigh)
-      if not get_link_by_index(neigh.interface) then return false end
+      if not config.get_link_by_index(neigh.interface) then return false end
       -- TODO: Create Route for local neighbour
-      return add_or_update_neighbour(neigh)
+      return config.add_or_update_neighbour(neigh)
    end,
    [RTM.DELNEIGH] = function(neigh)
-      if not get_link_by_index(neigh.interface) or not get_neighbour_by_address(neigh.address) then return false end
+      if not config.get_link_by_index(neigh.interface) or not config.get_neighbour_by_address(neigh.address) then return false end
       -- TODO: Remove Route for local neighbour
-      return remove_neighbour_by_address(neigh.address)
+      return config.remove_neighbour_by_address(neigh.address)
    end,
    [RTM.NEWROUTE] = function(route)
-      return add_or_update_route(route)
+      return config.add_or_update_route(route)
    end,
    [RTM.DELROUTE] = function(route)
-      return remove_route_by_dst(route.dst)
+      return config.remove_route_by_dst(route.dst)
    end,
 }
 
@@ -240,15 +163,13 @@ local function connect_netlink(type, groups)
          return sock
       end
       sleep.sleep(0.1)
-   until true
+   until false
 end
 
 function return_netlink_connector(type, groups)
    local sock = nil
    return function(close)
       if close and sock then
-         print('Closing socket with close true')
-         print(debug.traceback())
          sock:close()
          sock = nil
       end
@@ -271,10 +192,15 @@ function return_inbound_handler(connector, output_queue)
             for _, msg in ipairs(nlmsg) do
                local parser  = netlink_parsers[msg.nl]
                local handler = netlink_handlers[msg.nl]
+               -- print('NLMSG: ' .. tostring(msg.nl))
                if parser then
                   msg = parser(msg)
                end
                if msg ~= nil then
+                  -- print('PARSED: ')
+                  -- for k, v in pairs(msg) do
+                  --    print(k, v)
+                  -- end
                   output_queue:put(handler(msg))
                end
             end

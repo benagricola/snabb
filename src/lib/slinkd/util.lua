@@ -91,43 +91,56 @@ local function get_schema()
    return schema
 end
 
-local router_grammar
-local function get_grammar(root)
-   if not router_grammar then
-      router_grammar = data.config_grammar_from_schema(get_schema())
-   end
-   return router_grammar
-end
-
 get_config = function(path, key, value)
-   local grammar = get_grammar()
-
-   if key then
-      path = xpath_item(path, key, value)
-   end
-
-   return pcall(path_data.resolver(grammar, path), config)
+   return { 
+      method = 'add-config',
+      args = { 
+         schema=schema_name,
+         path=path,
+         config = config,
+      },
+      callback = callback
+   }
 end
 
-add_config = function(path, subconfig)
-   print('Adding path ' .. path)
-   local adder = path_data.adder_for_schema_by_name(schema_name, path)
-   return adder(config, subconfig)
+add_config = function(path, subconfig, callback)
+   local config = common.serialize_config(subconfig, schema_name, path)
+   return { 
+      method = 'add-config',
+      args = { 
+         schema=schema_name,
+         path=path,
+         config = config,
+      },
+      callback = callback
+   }
 end
 
-set_config = function(path, key, value, subconfig)
+set_config = function(path, key, value, subconfig, callback)
    path = xpath_item(path, key, value)
 
-   print('Setting path ' .. path .. ', overriding existing value')
-   local setter = path_data.setter_for_schema_by_name(schema_name, path)
-   return setter(config, subconfig)
+   local config = common.serialize_config(subconfig, schema_name, path)
+   return { 
+      method = 'set-config',
+      args = { 
+         schema=schema_name,
+         path=path,
+         config = config,
+      },
+      callback = callback
+   }
 end
 
-remove_config = function(path, key, value)
+remove_config = function(path, key, value, callback)
    path = xpath_item(path, key, value)
-   print('Removing path ' .. path)
-   local remover = path_data.remover_for_schema_by_name(schema_name, path)
-   return remover(config)
+   return { 
+      method = 'remove-config',
+      args = { 
+         schema=schema_name,
+         path=xpath,
+      },
+      callback = callback
+   }
 end
 
 
@@ -135,6 +148,7 @@ end
 update_config = function()
    local xpath = '/'
    local config = common.serialize_config(config, schema_name, xpath)
+   print('[CONFIG] UPDATE START')
    return { 
       method = 'set-config',
       args = { 
@@ -148,20 +162,11 @@ update_config = function()
          if ret.status ~= 0 then
             error('Unable to update dataplane config: ' .. ret.error)
          end
-         print('[CONFIG] UPDATE')
+         print('[CONFIG] UPDATE COMPLETE')
       end
    }
 end
 
-
-get_interface_from_resource = function(resource)
-   for _, res in ipairs(resource) do
-      local res = get_config('interfaces', 'interface', res)
-      if res then
-         return res
-      end
-   end
-end
 
 exit_if_error = function(f)
    return function()

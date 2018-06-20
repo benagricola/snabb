@@ -397,7 +397,8 @@ function Manager:start_worker_for_graph(id, graph)
    local actions = self.support.compute_config_actions(
       app_graph.new(), self.workers[id].graph, {}, 'load')
    self:enqueue_config_actions_for_worker(id, actions)
-   fiber.spawn(function () self:monitor_worker_counters(id) end)
+   
+   --fiber.spawn(function () self:monitor_worker_counters(id) end)
 
    return self.workers[id]
 end
@@ -564,6 +565,7 @@ function Manager:apply_translated_rpc_updates (updates)
 end
 function Manager:foreign_rpc_get_config (schema_name, path, format,
                                         print_default)
+   print('Foreign get')
    path = path_mod.normalize_path(path)
    local translate = self:get_translator(schema_name)
    local foreign_config = translate.get_config(self.current_configuration)
@@ -581,6 +583,7 @@ function Manager:foreign_rpc_get_state (schema_name, path, format,
    return { state = call_with_output_string(printer, foreign_state) }
 end
 function Manager:foreign_rpc_set_config (schema_name, path, config_str)
+   print('Foreign set')
    path = path_mod.normalize_path(path)
    local translate = self:get_translator(schema_name)
    local parser = path_data.parser_for_schema_by_name(schema_name, path)
@@ -590,6 +593,7 @@ function Manager:foreign_rpc_set_config (schema_name, path, config_str)
    return self:apply_translated_rpc_updates(updates)
 end
 function Manager:foreign_rpc_add_config (schema_name, path, config_str)
+   print('Foreign add')
    path = path_mod.normalize_path(path)
    local translate = self:get_translator(schema_name)
    local parser = path_data.parser_for_schema_by_name(schema_name, path)
@@ -599,6 +603,7 @@ function Manager:foreign_rpc_add_config (schema_name, path, config_str)
    return self:apply_translated_rpc_updates(updates)
 end
 function Manager:foreign_rpc_remove_config (schema_name, path)
+   print('Foreign remove')
    path = path_mod.normalize_path(path)
    local translate = self:get_translator(schema_name)
    local updates = translate.remove_config(self.current_configuration, path)

@@ -112,13 +112,19 @@ function Route:init()
 
       -- Convert neighbours to integer index
       for address, neighbour in pairs(routing.neighbour) do
-         self:add_neighbour(neighbour)
+         self:add_neighbour(address, neighbour)
       end
 
       -- Install config-loaded routes and build LPM
       for dst, route in pairs(routing.route) do
          if route.family == 'ipv4' then
-            self:add_v4_route(dst, route)
+            if route.type == 'blackhole' or route.type == 'prohibit' then
+               self:add_v4_route_blackhole(dst)
+            elseif route.type == 'local' then
+               self:add_v4_route_local(dst)
+            else
+               self:add_v4_route(dst, route.gateway)
+            end
          end
       end
 
@@ -128,31 +134,30 @@ end
 
 function Route:add_neighbour(address, neighbour)
    self.neighbours[address] = neighbour
+   -- Add /32 route for this specific neighbour
+   self:add_v4_route(address..'/32', address)
+end
+
+function Route:add_v4_route_blackhole(dst)
+   self.fib_v4:add_string(dst, neigh_blackhole)
+end
+
+function Route:add_v4_route_local(dst)
+   self.fib_v4:add_string(dst, neigh_local)
 end
 
 -- Note that this does *not* lpm:build()
-function Route:add_v4_route(dst, route)
-   local index
-
-   if route.type == 'blackhole' or route.type == 'prohibit' then
-      print('Route type is black hole')
-      index = neigh_blackhole
-   elseif route.type == 'local' then
-      print('Route type is local')
-      index = neigh_local
+function Route:add_v4_route(dst, gateway)
+   -- Allocate index if not known already
+   local index = self.gateway_addr[gateway]
+   if not index then
+      index = self.gateway_counter
+      self.gateway_addr[gateway] = index
+      self.gateway_index[index] = gateway
+      self.gateway_refs[gateway] = 1
+      self.gateway_counter = self.gateway_counter + 1
    else
-      -- Normal routes, allocate index if not known already
-      index = self.gateway_addr[route.gateway]
-      if not index then
-         index = self.gateway_counter
-         self.gateway_addr[route.gateway] = index
-         self.gateway_index[index] = route.gateway
-         self.gateway_refs[route.gateway] = 1
-         self.gateway_counter = self.gateway_counter + 1
-      else
-         self.gateway_refs[route.gateway] = self.gateway_refs[route.gateway] + 1
-      end
-      print('Normal route, index is ' .. index)
+      self.gateway_refs[gateway] = self.gateway_refs[gateway] + 1
    end
    self.fib_v4:add_string(dst, index)
 end
@@ -239,25 +244,26 @@ end
 
 function Route:route_v4(p, data)
 
-   local neighbour_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
+   local gateway_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
-   if not neighbour_idx or neighbour_idx == neigh_local then
+   if not gateway_idx or gateway_idx == 0 or gateway_idx == neigh_local then
       if self.debug and self:debug_timer() then
          print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no route')
       end
       return self:route_unknown(p)
    end
 
-   if neighbour_idx == neigh_blackhole then
+   if gateway_idx == neigh_blackhole then
       if self.debug and self:debug_timer() then
          print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' to blackhole')
       end
       return self:drop(p)
    end
 
+   local gateway_addr = self.gateway_index[gateway_idx]
 
    -- If route found, resolve neighbour
-   local neighbour = self.neighbours_v4[neighbour_idx]
+   local neighbour = self.neighbours[gateway_addr]
    
    -- If no neighbour found, send packet to control
    -- If dummy neighbour (not transitioned to reachable or failed), send packet to control
@@ -303,9 +309,8 @@ function Route:route_v4(p, data)
    -- Rewrite TTL field
    data[o_ipv4_ttl] = ttl - 1
 
+   -- Recalculate checksum based on updated TTL, 2 rounds
    local chksum = ffi_cast("uint16_t*", data + o_ipv4_checksum)
-
-   -- Recalculate checksum based on updated TTL
    local sum = lib.ntohs(chksum[0]) + 0x100
    sum = sum + bit.rshift(sum, 16)
    chksum[0] = lib.htons(sum + bit.rshift(sum, 16))
@@ -315,7 +320,7 @@ function Route:route_v4(p, data)
    ctr['ipv4_tx'] = ctr['ipv4_tx'] + 1
 
    if self.debug and self:debug_timer() then
-      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via gateway ' .. neighbour.address .. ' (' .. ethernet:ntop(data + constants.o_ethernet_src_addr) .. ' -> ' .. ethernet:ntop(data + constants.o_ethernet_dst_addr) .. ')')
+      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via gateway ' .. gateway_addr .. ' (' .. ethernet:ntop(data + constants.o_ethernet_src_addr) .. ' -> ' .. ethernet:ntop(data + constants.o_ethernet_dst_addr) .. ')')
    end
    
    -- TODO: Different interface link for IPv4 and IPv6 for separate Fragger paths

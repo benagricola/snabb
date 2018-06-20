@@ -7,7 +7,9 @@ local lib = require("core.lib")
 local data = require("lib.yang.data")
 local value = require("lib.yang.value")
 local schema = require("lib.yang.schema")
-local parse_path = require("lib.yang.path").parse_path
+local path = require("lib.yang.path")
+local parse_path = path.parse_path
+local normalize_path = path.normalize_path
 local util = require("lib.yang.util")
 local cltable = require("lib.cltable")
 local normalize_id = data.normalize_id
@@ -195,9 +197,19 @@ local function setter_for_grammar(grammar, path)
    if path == "/" then
       return function(config, subconfig) return subconfig end
    end
-   local head, tail = lib.dirname(path), lib.basename(path)
-   local tail_path = parse_path(tail)
-   local tail_name, query = tail_path[1].name, tail_path[1].query
+   -- local parts = parse_path(path)
+   -- local part_count = #parts
+   -- local head = table.concat(parts, '/', 1, part_count-2) -- Last item in parts is always empty
+   -- local tail = parts[part_count-1]
+   
+   --local head, tail = lib.dirname(path), lib.basename(path)
+
+   print('Path: ' .. path)
+   local head = parse_path(path)
+   local tail = table.remove(head)
+   head = normalize_path(head)
+   local tail_name, query = tail.name, tail.query
+
    if lib.equal(query, {}) then
       -- No query; the simple case.
       local getter, grammar = resolver(grammar, head)
