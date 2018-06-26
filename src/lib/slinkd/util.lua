@@ -79,7 +79,7 @@ has_changed = function(existing, new)
    return false
 end
 
-local xpath_item = function(path, key, value) return
+xpath_item = function(path, key, value) return
    string.format("%s[%s=%s]", path, key, value)
 end
 
@@ -91,16 +91,22 @@ local function get_schema()
    return schema
 end
 
+local router_grammar
+local function get_grammar(root)
+   if not router_grammar then
+      router_grammar = data.config_grammar_from_schema(get_schema())
+   end
+   return router_grammar
+end
+
 get_config = function(path, key, value)
-   return { 
-      method = 'add-config',
-      args = { 
-         schema=schema_name,
-         path=path,
-         config = config,
-      },
-      callback = callback
-   }
+   local grammar = get_grammar()
+
+   if key then
+      path = xpath_item(path, key, value)
+   end
+
+   return pcall(path_data.resolver(grammar, path), config)
 end
 
 add_config = function(path, subconfig, callback)

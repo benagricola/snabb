@@ -32,16 +32,13 @@ local config = require("lib.slinkd.config")
 -- Try to connect to socket as soon as it opens
 local function connect_dataplane(instance_id)
    repeat
-
       S.signal('pipe', 'ign')
       local socket = assert(S.socket("unix", "stream"))
       local tail = instance_id..'/config-leader-socket'
       local by_name = S.t.sockaddr_un(shm.root..'/by-name/'..tail)
       local by_pid = S.t.sockaddr_un(shm.root..'/'..tail)
       if socket:connect(by_name) or socket:connect(by_pid) then
-         local s =  file.fdopen(socket, 'rdwr')
-         s:nonblock()
-         return s
+         return file.fdopen(socket, 'rdwr')
       else
          socket:close()
       end
@@ -49,101 +46,90 @@ local function connect_dataplane(instance_id)
    until false
 end
 
-function return_dataplane_connector(instance_id, schema_name, revision_date)
+local function return_dataplane_connector(instance_id)
    local sock = nil
-   local caller = nil
    return function(close)
       if close and sock then
          sock:close()
          sock = nil
-         caller = nil
       end
       if not sock then
          sock = connect_dataplane(instance_id)
-         caller = rpc.prepare_caller('snabb-config-leader-v1')
-
-         local msg, parse_reply = rpc.prepare_call(
-            caller, 'attach-listener', {schema=schema_name, revision=revision_date})
-         common.send_message(sock, msg)
-         parse_reply(mem.open_input_string(common.recv_message(sock)))
       end
-      return sock, caller
+      return sock
    end
 end
 
+ConfigManager = {}
 
-function request_config(schema_name, output_queue, callback)
-   return util.exit_if_error(function()
-      output_queue:put({
-         method = 'get-config',
-         args = { schema=schema_name, path='/' },
-         callback = function(parse_reply, msg)
-            local data = parse_reply(mem.open_input_string(msg))
-            if not data then
-               error('Unable to load snabb config from instance, aborting!')
-            end
-            local config = yang.load_config_for_schema_by_name(schema_name, mem.open_input_string(data.config))
-            return callback(config)
-         end
-      })
+function ConfigManager.new(instance_id, schema_name, revision)
+   local connector = return_dataplane_connector(instance_id)
+   local sock = connector()
+   
+   local self = setmetatable({
+      connector     = connector,
+      sock          = sock,
+      caller        = rpc.prepare_caller('snabb-config-leader-v1'),
+      schema_name   = schema_name,
+      revision      = revision,
+   }, { __index = ConfigManager })
+
+   -- Attach in a fiber as this causes IO
+   fiber.spawn(function()
+      self:attach()
    end)
+   return self
 end
 
-function return_config_change_handler(input_queue, output_queue)
-   return util.exit_if_error(function()
-      local next_update = nil
-      while true do
-         if next_update and (next_update - app.now()) < 0 then
-            print('Schedule expired, updating...')
-            next_update = nil
-            output_queue:put(util.update_config())
-         elseif not next_update and input_queue:get() == true then
-            print('Scheduling update')
-            next_update = app.now() + 1
-         end
-         sleep.sleep(1)
-      end
-   end)
+function ConfigManager:reconnect()
+   self.sock = self.connector(true)
+   return self:attach()
 end
 
-function return_outbound_handler(connector, input_queue, output_queue)
-   return util.exit_if_error(function()
-      local sock, caller = connector()
-      while true do
-         local nt = input_queue:get()
-         local msg, parse_reply = rpc.prepare_call(
-            caller, nt.method, nt.args)
-
-         if not nt.callback then
-            output_queue:put({ callback = nil })
-         else
-            output_queue:put({callback = nt.callback, parse_reply = parse_reply})
-         end
-
-         -- Call leader
-         local ok, msg = pcall(common.send_message, sock, msg)
-
-         -- Reconnect if send_message errored
-         if not ok then
-            sock, caller = connector(true)
-         end
-      end
-   end)
+function ConfigManager:attach()
+   self:send_request('attach-listener', {})
+   return nil
 end
 
-function return_inbound_handler(connector, input_queue)
-   return util.exit_if_error(function()
-      local sock, caller = connector()
-      while true do
-         local res = input_queue:get()
+function ConfigManager:send_request(method, args)
+   if not args then args = {} end
+   args.schema = self.schema_name
+   args.revision = self.revision
 
-         local ok, msg = pcall(common.recv_message, sock)
-         print('Received message')
-         if not ok then
-            sock, caller = connector(true)
-         elseif res.callback then
-            res.callback(res.parse_reply, msg)
-         end
-      end
-   end)
+   --  Send request
+   local in_msg, parse_reply = rpc.prepare_call(self.caller, method, args)
+   local ok, err = pcall(common.send_message, self.sock, in_msg)
+   if not ok then return self:reconnect() end
+
+   -- Read response
+   local ok, out_msg = pcall(common.recv_message, self.sock)
+   if not ok then return self:reconnect() end
+   local ok, ret = parse_reply(out_msg)
+   if not ok then
+      return nil
+   end
+   return ret
 end
+
+function ConfigManager:get(path, key, value)
+   if key then
+      path = util.xpath_item(path, key, value)
+   end
+   return self:send_request('get-config', { path=path } )
+end
+
+function ConfigManager:add(path, config)
+   return self:send_request('add-config', { path=path, config=config } )
+end
+
+function ConfigManager:set(path, key, value, config)
+   if key then
+      path = util.xpath_item(path, key, value)
+   end
+   return self:send_request('set-config', { path=path, config=config } )
+end
+
+function ConfigManager:remove(path)
+   return self:send_request('remove-config', { path=path } )
+end
+

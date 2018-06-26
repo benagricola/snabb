@@ -52,6 +52,10 @@ end
 
 function Parser:read_char()
    if self.pos == #self.str then
+      if type(self.stream) == 'string' then
+         print(debug.traceback())
+         print(self.stream)
+      end
       local str = self.stream:read_line('keep')
       if str == nil then return nil end -- EOF.
       self.str, self.pos = str, 0

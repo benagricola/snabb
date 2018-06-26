@@ -103,34 +103,6 @@ local netlink_parsers = {
    [RTM.DELROUTE] = route_from_netlink,
 }
 
-local netlink_handlers = {
-   [RTM.NEWLINK] = function(link)
-      -- Only manage links with matching devices
-      if not config.get_device_by_name(link.name) then return false end
-      return config.add_or_update_link(link)  
-   end,
-   [RTM.DELLINK] = function(link)
-      if not config.get_link_by_index(link.index) then return false end
-      return config.remove_link_by_index(link.index)
-   end,
-   [RTM.NEWNEIGH] = function(neigh)
-      if not config.get_link_by_index(neigh.interface) then return false end
-      -- TODO: Create Route for local neighbour
-      return config.add_or_update_neighbour(neigh)
-   end,
-   [RTM.DELNEIGH] = function(neigh)
-      if not config.get_link_by_index(neigh.interface) or not config.get_neighbour_by_address(neigh.address) then return false end
-      -- TODO: Remove Route for local neighbour
-      return config.remove_neighbour_by_address(neigh.address)
-   end,
-   [RTM.NEWROUTE] = function(route)
-      return config.add_or_update_route(route)
-   end,
-   [RTM.DELROUTE] = function(route)
-      return config.remove_route_by_dst(route.dst)
-   end,
-}
-
 local netlink_dump = {
    ["link"]       = { c.RTM.GETLINK, rdump_flags, nil, t.rtgenmsg, { rtgen_family = c.AF.PACKET } }, -- Get Links
    ["neigh"]      = { c.RTM.GETNEIGH, rdump_flags, c.AF.INET, t.ndmsg, t.ndmsg{ family = c.AF.INET } },    -- Get Neighbours
@@ -190,18 +162,14 @@ function return_inbound_handler(connector, output_queue)
             sock = connector(true)
          elseif nlmsg ~= nil then
             for _, msg in ipairs(nlmsg) do
-               local parser  = netlink_parsers[msg.nl]
-               local handler = netlink_handlers[msg.nl]
-               -- print('NLMSG: ' .. tostring(msg.nl))
+               local msgtype = msg.nl
+               local parser  = netlink_parsers[msgtype]
                if parser then
                   msg = parser(msg)
-               end
-               if msg ~= nil then
-                  -- print('PARSED: ')
-                  -- for k, v in pairs(msg) do
-                  --    print(k, v)
-                  -- end
-                  output_queue:put(handler(msg))
+                  if msg ~= nil then
+                     msg.type = msgtype
+                     output_queue:put(msg)
+                  end
                end
             end
          end

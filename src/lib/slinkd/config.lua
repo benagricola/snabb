@@ -11,69 +11,61 @@ local neighbour_key  = 'address'
 local route_path     = '/routing/route'
 local route_key      = 'dest'
 
--- TODO: Deduplicate these maybe?
-get_path_by_key = function(path, key, value)
-   local ok, item = util.get_config(path, key, value)
-   if not ok or not item then
-      return nil
-   end
-   return item
-end
 
-add_or_update_path_by_key = function(path, key, new)
-   local old = get_path_by_key(path, key, new[key])
+add_or_update_path_by_key = function(mgr, path, key, new)
+   local old = mgr:get(path, key, new[key])
    if old ~= nil then
       if util.has_changed(old, new) then
-         return util.set_config(path, key, new[key], new)
+         return mgr:set(path, key, new[key], new)
       end
       return false
    end
-   return util.add_config(path,  {[new[key]] = new})
+   return mgr:add(path, {[new[key]] = new})
 end
 
-remove_path_by_key = function(path, key, value)
-   if not get_path_by_key(path, key, value) then
+remove_path_by_key = function(mgr, path, key, value)
+   if not mgr:get(path, key, value) then
       return false
    end
-   return util.remove_config(path, key, value)
+   return mgr:remove(path, key, value)
 end
 
-get_device_by_name = function(name)
-   return get_path_by_key(hardware_path, hardware_key, name)
+get_device_by_name = function(mgr, name)
+   return mgr:get(hardware_path, hardware_key, name)
 end
 
-get_link_by_index = function(index)
-   return get_path_by_key(link_path, link_key, index)
+get_link_by_index = function(mgr, index)
+   return mgr:get(link_path, link_key, index)
 end
 
-add_or_update_link = function(new)
-   return add_or_update_path_by_key(link_path, link_key, new)
+add_or_update_link = function(mgr, new)
+   return add_or_update_path_by_key(mgr, link_path, link_key, new)
 end
 
-remove_link_by_index = function(index)
-   return remove_path_by_key(link_path, link_key, index)
+remove_link_by_index = function(mgr, index)
+   return remove_path_by_key(mgr, link_path, link_key, index)
 end
 
-get_neighbour_by_address = function(address)
-   return get_path_by_key(neighbour_path, neighbour_key, address)
+get_neighbour_by_address = function(mgr, address)
+   return mgr:get(neighbour_path, neighbour_key, address)
 end
 
-add_or_update_neighbour = function(new)
-   return add_or_update_path_by_key(neighbour_path, neighbour_key, new)
+add_or_update_neighbour = function(mgr, new)
+   return add_or_update_path_by_key(mgr, neighbour_path, neighbour_key, new)
 end
 
-remove_neighbour_by_address = function(address)
-   return remove_path_by_key(neighbour_path, neighbour_key, address)
+remove_neighbour_by_address = function(mgr, address)
+   return remove_path_by_key(mgr, neighbour_path, neighbour_key, address)
 end
 
-get_route_by_dst = function(dst)
-   return get_path_by_key(route_path, route_key, dst)
+get_route_by_dst = function(mgr, dst)
+   return mgr:get(route_path, route_key, dst)
 end
 
-add_or_update_route = function(new)
-   return add_or_update_path_by_key(route_path, route_key, new)
+add_or_update_route = function(mgr, new)
+   return add_or_update_path_by_key(mgr, route_path, route_key, new)
 end
 
-remove_route_by_dst = function(dst)
-   return remove_path_by_key(route_path, route_key, dst)
+remove_route_by_dst = function(mgr, dst)
+   return remove_path_by_key(mgr, route_path, route_key, dst)
 end
