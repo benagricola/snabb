@@ -771,11 +771,6 @@ local function value_serializer(typ)
 end
 
 local function print_yang_string(str, file)
-   if type(str) == 'number' then
-      print(str)
-      print(debug.traceback())
-   end
-   
    if #str == 0 then
       file:write("''")
    elseif str:match("^[^%s;{}\"'/]*$") then

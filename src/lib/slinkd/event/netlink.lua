@@ -5,6 +5,7 @@ local cfg   = require("lib.slinkd.config")
 local S     = require("syscall")
 
 local RTM         = S.c.RTM
+local RTN         = S.c.RTN
 
 NetlinkEventManager = {}
 
@@ -29,6 +30,7 @@ local handlers = {
       return cfg.remove_neighbour_by_address(config, neigh.address)
    end,
    [RTM.NEWROUTE] = function(config, route)
+      local typ = RTN[route.type]
       return cfg.add_or_update_route(config, route)
    end,
    [RTM.DELROUTE] = function(config, route)
@@ -37,5 +39,5 @@ local handlers = {
 }
 
 function NetlinkEventManager:new()
-   return setmetatable({ handlers = handlers, name='NetlinkEventManager' }, {__index = setmetatable(NetlinkEventManager, {__index=event.EventManager})})
+   return setmetatable({ event_key = 'nl_type', handlers = handlers, name='NetlinkEventManager' }, {__index = setmetatable(NetlinkEventManager, {__index=event.EventManager})})
 end

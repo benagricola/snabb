@@ -84,8 +84,6 @@ local route_from_netlink = function(route)
       return nil
    end
 
-   util.print('[ROUTE]', route)
-
    return {
       dest    = tostring(route.dest) .. '/' .. tostring(route.dst_len),
       gateway = tostring(route.gw),
@@ -167,7 +165,7 @@ function return_inbound_handler(connector, output_queue)
                if parser then
                   msg = parser(msg)
                   if msg ~= nil then
-                     msg.type = msgtype
+                     msg.nl_type = msgtype
                      output_queue:put(msg)
                   end
                end

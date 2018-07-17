@@ -21,6 +21,7 @@ local yang_util = require("lib.yang.util")
 local rpc = require("lib.yang.rpc")
 local data = require("lib.yang.data")
 local path_lib = require("lib.yang.path")
+local path_data = require("lib.yang.path_data")
 local common = require("program.config.common")
 
 local alarms = require("lib.slinkd.alarms")
@@ -104,21 +105,29 @@ function ConfigManager:send_request(method, args)
    -- Read response
    local ok, out_msg = pcall(common.recv_message, self.sock)
    if not ok then return self:reconnect() end
-   local ok, ret = parse_reply(out_msg)
-   if not ok then
-      return nil
-   end
-   return ret
+   return parse_reply(mem.open_input_string(out_msg))
 end
 
 function ConfigManager:get(path, key, value)
    if key then
       path = util.xpath_item(path, key, value)
    end
-   return self:send_request('get-config', { path=path } )
+   local res = self:send_request('get-config', { path=path } )
+
+   if not res then
+      return nil
+   end
+
+   -- If config was retrieved, parse it and return
+   if res.status == 0 then
+      local parser = path_data.parser_for_schema_by_name(self.schema_name, path)
+      return parser(mem.open_input_string(res.config))
+   end
+   return nil
 end
 
 function ConfigManager:add(path, config)
+   local config = common.serialize_config(config, self.schema_name, path)
    return self:send_request('add-config', { path=path, config=config } )
 end
 
@@ -126,6 +135,7 @@ function ConfigManager:set(path, key, value, config)
    if key then
       path = util.xpath_item(path, key, value)
    end
+   local config = common.serialize_config(config, self.schema_name, path)
    return self:send_request('set-config', { path=path, config=config } )
 end
 

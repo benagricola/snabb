@@ -379,6 +379,7 @@ local function get_interface_by_name(interfaces, name)
          return index, interface
       end
    end
+   return nil
 end
 
 -- Parse output links into table
@@ -387,13 +388,15 @@ function Route:link ()
 
    for name, l in pairs(self.output) do
       if type(name) == 'string' and name ~= 'control' then
-         local index, iface = assert(get_interface_by_name(interfaces, name))
-         self.output_links[index] = { 
-            name   = name, 
-            link   = l,
-            config = iface, 
-         }
-         self.output_links_by_name[name] = index
+         local index, iface = get_interface_by_name(interfaces, name)
+         if index then
+            self.output_links[index] = { 
+               name   = name, 
+               link   = l,
+               config = iface, 
+            }
+            self.output_links_by_name[name] = index
+         end
       end
    end
 end
