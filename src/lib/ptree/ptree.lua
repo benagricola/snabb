@@ -508,7 +508,6 @@ function Manager:notify_pre_update (config, verb, path, ...)
 end
 
 function Manager:update_configuration (update_fn, verb, path, ...)
-   print('Ptree updating configuration...')
    self:notify_pre_update(self.current_configuration, verb, path, ...)
    local to_restart =
       self.support.compute_apps_to_restart_after_configuration_update (
@@ -518,7 +517,7 @@ function Manager:update_configuration (update_fn, verb, path, ...)
    local new_graphs = self.setup_fn(new_config, ...)
    for id, graph in pairs(new_graphs) do
       if self.workers[id] == nil then
-	 self:start_worker_for_graph(id, graph)
+	      self:start_worker_for_graph(id, graph)
       end
    end
 
@@ -535,7 +534,7 @@ function Manager:update_configuration (update_fn, verb, path, ...)
    self.current_configuration = new_config
    self.current_in_place_dependencies =
       self.support.update_mutable_objects_embedded_in_app_initargs (
-         self.current_in_place_dependencies, new_graphs, verb, path, ...)
+         self.current_in_place_dependencies, new_graphs, self.schema_name, verb, path, ...)
 end
 
 function Manager:handle_rpc_update_config (args, verb, compute_update_fn)

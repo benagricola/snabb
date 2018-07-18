@@ -115,24 +115,6 @@ function Route:init()
       for address, neighbour in pairs(routing.neighbour) do
          self:add_neighbour(address, neighbour)
       end
-
-      local rcount = 0
-      -- Install config-loaded routes and build LPM
-      for dst, route in pairs(routing.route) do
-         if route.family == 'ipv4' then
-            if route.type == 'blackhole' or route.type == 'prohibit' then
-               self:add_v4_route_blackhole(dst)
-            elseif route.type == 'local' then
-               self:add_v4_route_local(dst)
-            else
-               self:add_v4_route(dst, route.gateway)
-            end
-         end
-         rcount = rcount + 1
-      end
-
-      print('Parsed ' .. tostring(rcount) .. ' routes...')
-      self:build_v4_route()
    end
 end
 
@@ -140,6 +122,19 @@ function Route:add_neighbour(address, neighbour)
    self.neighbours[address] = neighbour
    -- Add /32 route for this specific neighbour
    self:add_v4_route(address..'/32', address)
+end
+
+function Route:add_v4_route(route)
+   if route.family == 'ipv4' then
+      if route.type == 'blackhole' or route.type == 'prohibit' then
+         self:add_v4_route_blackhole(route.dest)
+      elseif route.type == 'local' then
+         self:add_v4_route_local(route.dest)
+      else
+         self:add_v4_route_unicast(route.dest, route.gateway)
+      end
+   end
+   self:build_v4_route()
 end
 
 function Route:add_v4_route_blackhole(dst)
@@ -151,7 +146,7 @@ function Route:add_v4_route_local(dst)
 end
 
 -- Note that this does *not* lpm:build()
-function Route:add_v4_route(dst, gateway)
+function Route:add_v4_route_unicast(dst, gateway)
    -- Allocate index if not known already
    local index = self.gateway_addr[gateway]
    if not index then
@@ -247,16 +242,6 @@ end
 -- ARP Neighbour state: https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
 
 function Route:route_v4(p, data)
-
-
-   if self.debug and self:debug_timer() then
-      local c = 0
-      for dst, rt in pairs(self.config.routing.route) do
-         c = c + 1
-      end
-      print('Aware of ' .. c .. ' routes')
-   end
-   
    local gateway_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
    if not gateway_idx or gateway_idx == 0 or gateway_idx == neigh_local then

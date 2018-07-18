@@ -13,7 +13,7 @@ local route_key      = 'dest'
 
 
 add_or_update_path_by_key = function(mgr, path, key, new)
-   util.print('Adding path ' .. path .. ' by key ' .. key .. ' with value ' .. tostring(new[key]))
+   -- util.print('Adding path ' .. path .. ' by key ' .. key .. ' with value ' .. tostring(new[key]))
    local old = mgr:get(path, key, new[key])
    if old ~= nil then
       if util.has_changed(old, new) then
@@ -25,12 +25,10 @@ add_or_update_path_by_key = function(mgr, path, key, new)
 end
 
 remove_path_by_key = function(mgr, path, key, value)
-   util.print('Removing path ' .. path .. ' by key ' .. key .. ' with value ' .. tostring(value))
+   -- util.print('Removing path ' .. path .. ' by key ' .. key .. ' with value ' .. tostring(value))
    if not mgr:get(path, key, value) then
-      util.print('Not exists')
       return false
    end
-   util.print('Removing')
    return mgr:remove(path, key, value)
 end
 

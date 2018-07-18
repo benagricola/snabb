@@ -391,7 +391,7 @@ function apply_config_actions (actions)
    -- Dispatch actions.
    for _, action in ipairs(actions) do
       local name, args = unpack(action)
-      if log then io.write("engine: ", name, " ", args[1], "\n") end
+      io.write("engine: ", name, " ", args[1], "\n")
       assert(ops[name], name)(unpack(args))
    end
 
