@@ -248,6 +248,15 @@ end
 
 function Route:route_v4(p, data)
 
+
+   if self.debug and self:debug_timer() then
+      local c = 0
+      for dst, rt in pairs(self.config.routing.route) do
+         c = c + 1
+      end
+      print('Aware of ' .. c .. ' routes')
+   end
+   
    local gateway_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
 
    if not gateway_idx or gateway_idx == 0 or gateway_idx == neigh_local then
@@ -257,13 +266,6 @@ function Route:route_v4(p, data)
       return self:route_unknown(p)
    end
 
-   if self.debug and self:debug_timer() then
-      local c = 0
-      for dst, rt in pairs(self.config.routing.route) do
-         c = c + 1
-      end
-      print('Aware of ' .. c .. ' routes')
-   end
    if gateway_idx == neigh_blackhole then
       if self.debug and self:debug_timer() then
          print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' to blackhole')
