@@ -204,7 +204,6 @@ local function setter_for_grammar(grammar, path)
    
    --local head, tail = lib.dirname(path), lib.basename(path)
 
-   print('Path: ' .. path)
    local head = parse_path(path)
    local tail = table.remove(head)
    head = normalize_path(head)

@@ -63,9 +63,6 @@ get_route_by_dst = function(mgr, dst)
 end
 
 add_or_update_route = function(mgr, new)
-   for k, v in pairs(new) do
-      print(k, v)
-   end
    return add_or_update_path_by_key(mgr, route_path, route_key, new)
 end
 

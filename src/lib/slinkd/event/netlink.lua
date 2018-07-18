@@ -30,7 +30,6 @@ local handlers = {
       return cfg.remove_neighbour_by_address(config, neigh.address)
    end,
    [RTM.NEWROUTE] = function(config, route)
-      local typ = RTN[route.type]
       return cfg.add_or_update_route(config, route)
    end,
    [RTM.DELROUTE] = function(config, route)
