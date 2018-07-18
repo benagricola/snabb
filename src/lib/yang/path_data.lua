@@ -193,22 +193,27 @@ function parser_for_schema_by_name(schema_name, path)
 end
 parser_for_schema_by_name = util.memoize(parser_for_schema_by_name)
 
+local function parsed_path_to_string (path)
+   local ret = {}
+   for _,v in ipairs(path) do
+      local query = {}
+      for k,v in pairs(v.query or {}) do
+         table.insert(query, '['..k..'='..v..']')
+      end
+      query = table.concat(query, '')
+      table.insert(ret, v.name..query)
+   end
+   return '/'..table.concat(ret, '/')
+end
+
 local function setter_for_grammar(grammar, path)
    if path == "/" then
       return function(config, subconfig) return subconfig end
    end
-   -- local parts = parse_path(path)
-   -- local part_count = #parts
-   -- local head = table.concat(parts, '/', 1, part_count-2) -- Last item in parts is always empty
-   -- local tail = parts[part_count-1]
-   
-   --local head, tail = lib.dirname(path), lib.basename(path)
-
    local head = parse_path(path)
    local tail = table.remove(head)
-   head = normalize_path(head)
    local tail_name, query = tail.name, tail.query
-
+   head = parsed_path_to_string(head)
    if lib.equal(query, {}) then
       -- No query; the simple case.
       local getter, grammar = resolver(grammar, head)
@@ -364,9 +369,10 @@ adder_for_schema_by_name = util.memoize(adder_for_schema_by_name)
 
 local function remover_for_grammar(grammar, path)
    local top_grammar = grammar
-   local head, tail = lib.dirname(path), lib.basename(path)
-   local tail_path = parse_path(tail)
-   local tail_name, query = tail_path[1].name, tail_path[1].query
+   local head = parse_path(path)
+   local tail = table.remove(head)
+   local tail_name, query = tail.name, tail.query
+   head = parsed_path_to_string(head)
    local head_and_tail_name = head..'/'..tail_name
    local getter, grammar = resolver(grammar, head_and_tail_name)
    if grammar.type == 'array' then
@@ -681,6 +687,12 @@ function selftest()
 
    local checker = consistency_checker_from_schema_by_name('ietf-alarms', false)
    assert(checker)
+
+   local scm = schema.load_schema_by_name('snabb-softwire-v2')
+   local grammar = data.config_grammar_from_schema(scm)
+   setter_for_grammar(grammar, "/softwire-config/instance[device=test]/"..
+                               "queue[id=0]/external-interface/ip 208.118.235.148")
+   remover_for_grammar(grammar, "/softwire-config/instance[device=test]/")
 
    print("selftest: ok")
 end

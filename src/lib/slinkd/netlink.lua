@@ -84,6 +84,8 @@ local route_from_netlink = function(route)
       return nil
    end
 
+   util.print('[ROUTE]', route)
+
    return {
       dest    = tostring(route.dest) .. '/' .. tostring(route.dst_len),
       gateway = tostring(route.gw),

@@ -84,6 +84,7 @@ function Route:new(config)
       output_links_by_name = {},
    }
 
+   print('New Route Instance')
    local self = setmetatable(o, { __index = Route })
 
    -- Create SHM items for locally tracked counters
@@ -115,6 +116,7 @@ function Route:init()
          self:add_neighbour(address, neighbour)
       end
 
+      local rcount = 0
       -- Install config-loaded routes and build LPM
       for dst, route in pairs(routing.route) do
          if route.family == 'ipv4' then
@@ -126,8 +128,10 @@ function Route:init()
                self:add_v4_route(dst, route.gateway)
             end
          end
+         rcount = rcount + 1
       end
 
+      print('Parsed ' .. tostring(rcount) .. ' routes...')
       self:build_v4_route()
    end
 end
@@ -253,6 +257,13 @@ function Route:route_v4(p, data)
       return self:route_unknown(p)
    end
 
+   if self.debug and self:debug_timer() then
+      local c = 0
+      for dst, rt in pairs(self.config.routing.route) do
+         c = c + 1
+      end
+      print('Aware of ' .. c .. ' routes')
+   end
    if gateway_idx == neigh_blackhole then
       if self.debug and self:debug_timer() then
          print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' to blackhole')
@@ -399,6 +410,11 @@ function Route:link ()
          end
       end
    end
+end
+
+function Route:reconfig(cfg)
+   print('Received reconfiguration request')
+   print(cfg)
 end
 
 

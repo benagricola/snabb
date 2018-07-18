@@ -383,8 +383,10 @@ function Intel:new (conf)
 
    -- Initialize per app statistics
    self.shm = {
-      mtu    = {counter, self.mtu},
-      txdrop = {counter}
+      mtu       = {counter, self.mtu},
+      rxcounter = {counter, self.rxcounter},
+      txcounter = {counter, self.txcounter},
+      txdrop    = {counter}
    }
 
    -- Figure out if we are supposed to collect device statistics
@@ -403,12 +405,14 @@ function Intel:new (conf)
          promisc   = {counter},
          macaddr   = {counter, self.r.RAL64[0]:bits(0,48)},
          rxbytes   = {counter},
+         rxbits    = {counter},
          rxpackets = {counter},
          rxmcast   = {counter},
          rxbcast   = {counter},
          rxdrop    = {counter},
          rxerrors  = {counter},
          txbytes   = {counter},
+         txbits    = {counter},
          txpackets = {counter},
          txmcast   = {counter},
          txbcast   = {counter},
@@ -417,58 +421,58 @@ function Intel:new (conf)
          rxdmapackets = {counter}
       }
       self:init_queue_stats(frame)
-      self.stats = shm.create_frame("pci/"..self.pciaddress, frame)
+      self.stats = shm.create_frame(self.shm_root.."stats", frame)
       self.sync_timer = lib.throttle(0.01)
    end
 
-   alarms.add_to_inventory {
-      [{alarm_type_id='ingress-bandwith'}] = {
-         resource=tostring(S.getpid()),
-         has_clear=true,
-         description='Ingress bandwith exceeds N Gbps',
-      }
-   }
-   local ingress_bandwith = alarms.declare_alarm {
-      [{resource=tostring(S.getpid()),alarm_type_id='ingress-bandwith'}] = {
-         perceived_severity='major',
-         alarm_text='Ingress bandwith exceeds 1e9 bytes/s which can cause packet drops.'
-      }
-   }
+   -- Alias to the shared stats frame in each process's pci dir
+   -- The conditional checks if the symlink exists with lstat since
+   -- shm.exists requires the target exist, and the run_stats process
+   -- could go down and make the target cease to exist
+   if not S.lstat(shm.root.."/"..S.getpid().."/pci/"..self.pciaddress) then
+      shm.alias("pci/"..self.pciaddress, self.shm_root.."stats")
+   end
+
+   alarms.add_to_inventory(
+      {alarm_type_id='ingress-bandwith'},
+      {resource=tostring(S.getpid()), has_clear=true,
+       description='Ingress bandwith exceeds N Gbps'})
+   local ingress_bandwith = alarms.declare_alarm(
+      {resource=tostring(S.getpid()),alarm_type_id='ingress-bandwith'},
+      {perceived_severity='major',
+       alarm_text='Ingress bandwith exceeds 1e9 bytes/s which can cause packet drops.'})
    self.ingress_bandwith_alarm = CallbackRateAlarm.new(ingress_bandwith,
       1, 1e9, function() return self:rxbytes() end)
 
-   alarms.add_to_inventory {
-      [{alarm_type_id='ingress-packet-rate'}] = {
-         resource=tostring(S.getpid()),
-         has_clear=true,
-         description='Ingress packet-rate exceeds N Gbps',
-      }
-   }
-   local ingress_packet_rate = alarms.declare_alarm {
-      [{resource=tostring(S.getpid()),alarm_type_id='ingress-packet-rate'}] = {
-         perceived_severity='major',
-         alarm_text='Ingress packet-rate exceeds 2MPPS which can cause packet drops.'
-      }
-   }
+   alarms.add_to_inventory(
+      {alarm_type_id='ingress-packet-rate'},
+      {resource=tostring(S.getpid()), has_clear=true,
+       description='Ingress packet-rate exceeds N Gbps'})
+   local ingress_packet_rate = alarms.declare_alarm(
+      {resource=tostring(S.getpid()),alarm_type_id='ingress-packet-rate'},
+      {perceived_severity='major',
+       alarm_text='Ingress packet-rate exceeds 2MPPS which can cause packet drops.'})
    self.ingress_packet_rate_alarm = CallbackRateAlarm.new(ingress_packet_rate,
       1, 2e6, function() return self:rxpackets() end)
 
    if self.master then
-      alarms.add_to_inventory {
-         [{alarm_type_id='phy-down'}] = {
+      alarms.add_to_inventory(
+         {alarm_type_id='phy-down'},
+         {
             resource=self.pciaddress,
             has_clear=true,
             description='Interface is down',
          }
-      }
-      local phy_down_state = alarms.declare_alarm {
-         [{resource=self.pciaddress,alarm_type_id='phy-down'}] = {
+      )
+      local phy_down_state = alarms.declare_alarm(
+         {resource=self.pciaddress,alarm_type_id='phy-down'},
+         {
             perceived_severity='major',
             alarm_text='Interface is down',
             resource=self.pciaddress,
             alt_resource={self.alias}
          }
-      }
+      )
       local a = self
       self.phy_down_state_alarm = CallbackAlarm.new(phy_down_state,
          0.1, function()
@@ -689,9 +693,9 @@ function Intel:push ()
    -- same code as in pull, but we only call it in case the rxq
    -- is disabled for this app
    if self.rxq and self.output.output then return end
-   if self.run_stats and self.sync_timer() then
-      self:sync_stats()
-   end
+
+   -- Sync device statistics.
+   if self.run_stats and self.sync_timer() then self:sync_stats() end
 end
 
 function Intel:pull ()
@@ -716,13 +720,9 @@ function Intel:pull ()
    -- This avoids RDT == RDH when every descriptor is available.
    self.r.RDT(band(self.rdt - 1, self.ndesc-1))
 
-   -- Sync device statistics if we are master.
-   if self.run_stats and self.sync_timer() then
-      self:sync_stats()
-   end
-   if self.master then
-      self.phy_down_state_alarm:check()
-   end
+   -- Sync device statistics.
+   if self.run_stats and self.sync_timer() then self:sync_stats() end
+   if self.master then self.phy_down_state_alarm:check() end
 end
 
 function Intel:unlock_sw_sem()
@@ -867,13 +867,13 @@ function Intel:sync_stats ()
    set(stats.speed, self:link_speed())
    set(stats.status, self:link_status() and 1 or 2)
    set(stats.promisc, self:promisc() and 1 or 2)
-   set(stats.rxbytes, self:rxbytes())
+   set(stats.rxbits, self:rxbytes()*8)
    set(stats.rxpackets, self:rxpackets())
    set(stats.rxmcast, self:rxmcast())
    set(stats.rxbcast, self:rxbcast())
    set(stats.rxdrop, self:rxdrop())
    set(stats.rxerrors, self:rxerrors())
-   set(stats.txbytes, self:txbytes())
+   set(stats.txbits, self:txbytes()*8)
    set(stats.txpackets, self:txpackets())
    set(stats.txmcast, self:txmcast())
    set(stats.txbcast, self:txbcast())
@@ -1321,13 +1321,14 @@ function Intel82599:init_queue_stats (frame)
    local perqregs = {
       rxdrops = "QPRDC",
       rxpackets = "QPRC",
-      txpackets = "QPTC",
       rxbytes = "QBRC64",
       txbytes = "QBTC64",
+      txpackets = "QPTC",
    }
    self.queue_stats = {}
    for i=0,15 do
       for k,v in pairs(perqregs) do
+         local v = perqregs[k]
          local name = "q" .. i .. "_" .. k
          table.insert(self.queue_stats, name)
          table.insert(self.queue_stats, self.r[v][i])

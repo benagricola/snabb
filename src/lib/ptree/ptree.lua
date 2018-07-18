@@ -26,7 +26,7 @@ local state = require("lib.yang.state")
 local path_mod = require("lib.yang.path")
 local path_data = require("lib.yang.path_data")
 local action_codec = require("lib.ptree.action_codec")
-local alarm_codec = require("lib.ptree.alarm_codec")
+local ptree_alarms = require("lib.ptree.alarms")
 local support = require("lib.ptree.support")
 local channel = require("lib.ptree.channel")
 local trace = require("lib.ptree.trace")
@@ -335,6 +335,11 @@ function Manager:make_rrd(counter_name)
       base_interval='2s' })
 end
 
+local blacklisted_counters = lib.set('macaddr', 'mtu', 'promisc', 'speed', 'status', 'type')
+local function blacklisted (name)
+   return blacklisted_counters[strip_suffix(lib.basename(name), '.counter')]
+end
+
 function Manager:monitor_worker_counters(id)
    local worker = self.workers[id]
    if not worker then return end -- Worker was removed before monitor started.
@@ -346,7 +351,9 @@ function Manager:monitor_worker_counters(id)
          local name = strip_prefix(ev.name, dir..'/')
          local qualified_name = '/'..pid..'/'..name
          local counters = self.counters[name]
-         if ev.kind == 'creat' then
+         if blacklisted(name) then
+            -- Pass.
+         elseif ev.kind == 'creat' then
             if not counters then
                counters = { aggregated=counter.create(name), active={},
                             rrd={}, aggregated_rrd=self:make_rrd(name),
@@ -501,11 +508,16 @@ function Manager:notify_pre_update (config, verb, path, ...)
 end
 
 function Manager:update_configuration (update_fn, verb, path, ...)
+   print('Ptree updating configuration...')
    self:notify_pre_update(self.current_configuration, verb, path, ...)
    local to_restart =
       self.support.compute_apps_to_restart_after_configuration_update (
          self.schema_name, self.current_configuration, verb, path,
          self.current_in_place_dependencies, ...)
+   for k, v in pairs(to_restart) do
+      print('Restart ', tostring(k), tostring(v))
+   end
+
    local new_config = update_fn(self.current_configuration, ...)
    local new_graphs = self.setup_fn(new_config, ...)
    for id, graph in pairs(new_graphs) do
@@ -765,30 +777,15 @@ function Manager:receive_alarms_from_worker (worker)
    while true do
       local buf, len = channel:peek_message()
       if not buf then break end
-      local alarm = alarm_codec.decode(buf, len)
-      self:handle_alarm(worker, alarm)
+      local name, key, args = ptree_alarms.decode(buf, len)
+      local ok, err = pcall(self.handle_alarm, self, worker, name, key, args)
+      if not ok then self:warn('failed to handle alarm op %s', name) end
       channel:discard_message(len)
    end
 end
 
-function Manager:handle_alarm (worker, alarm)
-   local fn, args = unpack(alarm)
-   if fn == 'raise_alarm' then
-      local key, args = alarm_codec.to_alarm(args)
-      alarms.raise_alarm(key, args)
-   end
-   if fn == 'clear_alarm' then
-      local key = alarm_codec.to_alarm(args)
-      alarms.clear_alarm(key)
-   end
-   if fn == 'add_to_inventory' then
-      local key, args = alarm_codec.to_alarm_type(args)
-      alarms.do_add_to_inventory(key, args)
-   end
-   if fn == 'declare_alarm' then
-      local key, args = alarm_codec.to_alarm(args)
-      alarms.do_declare_alarm(key, args)
-   end
+function Manager:handle_alarm (worker, name, key, args)
+   alarms[name](key, args)
 end
 
 function Manager:stop ()
