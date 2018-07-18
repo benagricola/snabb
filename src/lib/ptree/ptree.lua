@@ -514,10 +514,6 @@ function Manager:update_configuration (update_fn, verb, path, ...)
       self.support.compute_apps_to_restart_after_configuration_update (
          self.schema_name, self.current_configuration, verb, path,
          self.current_in_place_dependencies, ...)
-   for k, v in pairs(to_restart) do
-      print('Restart ', tostring(k), tostring(v))
-   end
-
    local new_config = update_fn(self.current_configuration, ...)
    local new_graphs = self.setup_fn(new_config, ...)
    for id, graph in pairs(new_graphs) do
