@@ -4,22 +4,20 @@ local constants = require('apps.lwaftr.constants')
 local counter   = require('core.counter')
 local lib       = require("core.lib")
 local cltable   = require('lib.cltable')
-local yang_util = require('lib.yang.util')
 local ffi       = require('ffi')
 local bit       = require('bit')
-local lpm_ip4   = require('lib.lpm.ip4')
 local ethernet  = require('lib.protocol.ethernet')
 local ipv4      = require("lib.protocol.ipv4")
 local link      = require('core.link')
 local packet    = require('core.packet')
+
+local routing_table = require('lib.slinkd.routing_table').IPv4RoutingTable
 
 -- Confusing naming, maybe fix this
 local C = ffi.C
 
 local ffi_copy, ffi_cast   = ffi.copy, ffi.cast
 local bit_band, bit_rshift = bit.band, bit.rshift
-
-local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
 
 local l3_offset = constants.ethernet_header_size
 
@@ -28,18 +26,13 @@ local o_ipv4_dst_addr = l3_offset + constants.o_ipv4_dst_addr
 local o_ipv4_ttl      = l3_offset + constants.o_ipv4_ttl
 local o_ipv4_checksum = l3_offset + constants.o_ipv4_checksum
 
-local uint32_t = ffi.typeof('uint32_t')
-local uint32_ptr_t = ffi.typeof("$*", uint32_t)
-
-local neigh_local     = 1
-local neigh_blackhole = 2
-
-
 local l_transmit, l_receive, l_nreadable, l_nwriteable = link.transmit, link.receive, link.nreadable, link.nwritable
 local p_free = packet.free
 
 --- # `Route` app: route traffic to an output port based on longest prefix-match
-
+--- # Routing_table must be an instance of an object containing at least a single :lookup().
+--- # :lookup() takes a dst ip addr ptr, and must return either an output an interface index,
+--- # or a well-known constant indicating 'drop packet' or 'route to control plane'.
 Route = {
    yang_schema = 'snabb-router-v1',
    config = {
@@ -55,19 +48,14 @@ Route = {
 -- TODO: Resilient Hashing / ECMP
 
 function Route:new(config)
+   local rt = routing_table.new(config.routing)
    local o = {
       config                 = config,
-      fib_v4                 = nil,
-      fib_v6                 = nil,
-      debug                  = config.debug,
-      neighbours             = {}, -- Default empty cltable
-      gateway_counter        = neigh_blackhole + 1, -- First gateway index
-      gateway_index          = {},
-      gateway_addr           = {},
-      gateway_refs           = {},
-      sync_timer             = lib.throttle(0.1),
+      v4_routing_table       = rt,
+      v4_actions             = rt.actions,
       v4_build_timer         = lib.throttle(1),
-      v6_build_timer         = lib.throttle(1),
+      debug                  = config.debug,
+      sync_timer             = lib.throttle(0.1),
       debug_timer            = lib.throttle(0.1),
       ctr_names              = {
          'ipv4_rx',
@@ -84,7 +72,6 @@ function Route:new(config)
       output_links_by_name = {},
    }
 
-   print('New Route Instance')
    local self = setmetatable(o, { __index = Route })
 
    -- Create SHM items for locally tracked counters
@@ -99,113 +86,15 @@ function Route:new(config)
 end
 
 function Route:init()
-   -- TODO: Implement IPv6
-   if self.config.routing then
-      local routing = self.config.routing
-
-      -- Choose LPM implementation
-      local v4_lpm_config = 'LPM4_'.. routing.ipv4_lpm_implementation:lower()
-      local v4_lpm_class = require('lib.lpm.'..v4_lpm_config:lower())[v4_lpm_config]
-
-      self.fib_v4 = v4_lpm_class:new()
-      -- Add default next hop with index 0 (required! do not remove)
-      self.fib_v4:add_string('0.0.0.0/0', 0)
-
-      -- Convert neighbours to integer index
-      for address, neighbour in pairs(routing.neighbour) do
-         self:add_neighbour(address, neighbour)
-      end
+   if self.debug then
+      print('Initialising routes from config...')
    end
-end
-
-function Route:add_neighbour(address, neighbour)
-   self.neighbours[address] = neighbour
-   -- Add /32 route for this specific neighbour
-   self:add_v4_route(address..'/32', address)
-end
-
-function Route:add_v4_route(route)
-   if route.family == 'ipv4' then
-      if route.type == 'blackhole' or route.type == 'prohibit' then
-         self:add_v4_route_blackhole(route.dest)
-      elseif route.type == 'local' then
-         self:add_v4_route_local(route.dest)
-      else
-         self:add_v4_route_unicast(route.dest, route.gateway)
-      end
+   -- Load base routes from config
+   for dst, route in pairs(self.config.routing.route) do
+      print('Adding route ', dst)
+      self.v4_routing_table:add_route(route)
    end
-   self:build_v4_route()
-end
-
-function Route:add_v4_route_blackhole(dst)
-   self.fib_v4:add_string(dst, neigh_blackhole)
-end
-
-function Route:add_v4_route_local(dst)
-   self.fib_v4:add_string(dst, neigh_local)
-end
-
--- Note that this does *not* lpm:build()
-function Route:add_v4_route_unicast(dst, gateway)
-   -- Allocate index if not known already
-   local index = self.gateway_addr[gateway]
-   if not index then
-      index = self.gateway_counter
-      self.gateway_addr[gateway] = index
-      self.gateway_index[index] = gateway
-      self.gateway_refs[gateway] = 1
-      self.gateway_counter = self.gateway_counter + 1
-   else
-      self.gateway_refs[gateway] = self.gateway_refs[gateway] + 1
-   end
-   self.fib_v4:add_string(dst, index)
-end
-
-function Route:remove_v4_route(dst, route)
-   -- Convert integer to wire format
-   self.fib_v4:remove_string(dst)
-   self.gateway_refs[route.gateway] = self.gateway_refs[route.gateway] - 1
-
-   -- Clean up gateway indexes if not referenced by any routes
-   if self.gateway_refs[route.gateway] < 1 then
-      local idx = self.gateway_addr[route.gateway]
-      self.gateway_index[index] = nil
-      self.gateway_addr[route.gateway] = nil
-      self.gateway_refs[route.gateway] = nil
-   end
-end
-
-function Route:build_v4_route()
-   if self:v4_build_timer() then
-      local start_ns = tonumber(C.get_time_ns())
-      self.fib_v4:build()
-      print('Built v4 routing table in ' .. ((tonumber(C.get_time_ns()) - start_ns)/1e6) ..'ms...')
-   end
-end
-
--- https://github.com/rmind/liblpm ?
-function Route:build_v6_route()
-   if self:v6_build_timer() then
-      local start_ns = tonumber(C.get_time_ns())
-      self.fib_v6:build()
-      print('Built v6 routing table in ' .. ((tonumber(C.get_time_ns()) - start_ns)/1e6) ..'ms...')
-   end
-end
-
-function Route:get_output_by_name(name)
-   local interface_idx = self.output_links_by_name[name]
-   if not interface_idx then
-      return nil
-   end
-   return assert(self.output_links[interface_idx])
-end
-
-function Route:get_input_by_name(name)
-   local interface_idx = self.links.input_by_name[name]
-   if not interface_idx then
-      return nil
-   end
-   return assert(self.links.input[interface_idx])
+   return nil
 end
 
 -- Sync locally stored timers to shared memory
@@ -221,58 +110,51 @@ end
 function Route:route_unknown(p)
    local ctr  = self.ctr
    local ctrl = self.output.control
-
    if not ctrl then
       ctr['drop'] = ctr['drop'] + 1
       return p_free(p)
    end
-
    ctr['unkn_tx'] = ctr['unkn_tx'] + 1
-
    return l_transmit(ctrl, p)
 end
 
 function Route:drop(p)
    local ctr  = self.ctr
-
    ctr['drop'] = ctr['drop'] + 1
    return p_free(p)
 end
 
--- ARP Neighbour state: https://people.cs.clemson.edu/~westall/853/notes/arpstate.pdf
+function Route:load_routing_table(blob)
+   print('Loading routing table...')
+   self.v4_routing_table:load(blob)
+end
 
 function Route:route_v4(p, data)
-   local gateway_idx = self.fib_v4:search_bytes(data + o_ipv4_dst_addr)
-
-   if not gateway_idx or gateway_idx == 0 or gateway_idx == neigh_local then
-      if self.debug and self:debug_timer() then
-         print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no route')
-      end
+   if not self.v4_routing_table then
       return self:route_unknown(p)
    end
 
-   if gateway_idx == neigh_blackhole then
-      if self.debug and self:debug_timer() then
-         print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' to blackhole')
+   print('Routing packet')
+   local res, dst_mac = self.v4_routing_table:lookup(data + o_ipv4_dst_addr)
+
+   if res < self.v4_actions.route then
+      if res == self.v4_actions.drop then
+         if self.debug and self:debug_timer() then
+            print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' to blackhole')
+         end
+         return self:drop(p)
+      else
+         if self.debug and self:debug_timer() then
+            print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control')
+         end
+         return self:route_unknown(p)
       end
-      return self:drop(p)
    end
 
-   local gateway_addr = self.gateway_index[gateway_idx]
+   -- At this point, res should not be an action - but an interface ID
+   assert(res > self.v4_actions.route)
 
-   -- If route found, resolve neighbour
-   local neighbour = self.neighbours[gateway_addr]
-   
-   -- If no neighbour found, send packet to control
-   -- If dummy neighbour (not transitioned to reachable or failed), send packet to control
-   if not neighbour or not neighbour.available then
-      if self.debug and self:debug_timer() then
-         print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via control due to no neighbour')
-      end
-      return self:route_unknown(p)
-   end
-
-   local interface = self.output_links[neighbour.interface]
+   local interface = self.output_links[res]
 
    -- If no interface found, send packet to control
    if not interface then
@@ -302,7 +184,7 @@ function Route:route_v4(p, data)
    -- Start routing packet
    -- Rewrite SRC / DST MAC Addresses
    ffi_copy(data + constants.o_ethernet_src_addr, ethernet:pton(interface.config.mac), 6)
-   ffi_copy(data + constants.o_ethernet_dst_addr, ethernet:pton(neighbour.mac), 6)
+   ffi_copy(data + constants.o_ethernet_dst_addr, ethernet:pton(dst_mac), 6)
 
    -- Rewrite TTL field
    data[o_ipv4_ttl] = ttl - 1
@@ -310,15 +192,15 @@ function Route:route_v4(p, data)
    -- Recalculate checksum based on updated TTL, 2 rounds
    local chksum = ffi_cast("uint16_t*", data + o_ipv4_checksum)
    local sum = lib.ntohs(chksum[0]) + 0x100
-   sum = sum + bit.rshift(sum, 16)
-   chksum[0] = lib.htons(sum + bit.rshift(sum, 16))
+   sum = sum + bit_rshift(sum, 16)
+   chksum[0] = lib.htons(sum + bit_rshift(sum, 16))
 
    local ctr = self.ctr
 
    ctr['ipv4_tx'] = ctr['ipv4_tx'] + 1
 
    if self.debug and self:debug_timer() then
-      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via gateway ' .. gateway_addr .. ' (' .. ethernet:ntop(data + constants.o_ethernet_src_addr) .. ' -> ' .. ethernet:ntop(data + constants.o_ethernet_dst_addr) .. ')')
+      print('Routing packet for ' .. ipv4:ntop(data + o_ipv4_dst_addr) .. ' via  ' .. ethernet:ntop(data + constants.o_ethernet_src_addr) .. ' -> ' .. ethernet:ntop(data + constants.o_ethernet_dst_addr))
    end
    
    -- TODO: Different interface link for IPv4 and IPv6 for separate Fragger paths
@@ -399,20 +281,22 @@ function Route:link ()
    end
 end
 
-function Route:reconfig(cfg)
-   print('Received reconfiguration request')
-   print(cfg)
-end
-
-
 function selftest ()
    local random = require('apps.basic.random_source')
    local basic  = require('apps.basic.basic_apps')
 
+   local yang_util = require('lib.yang.util')
+   local y_ipv4_pton, y_ipv4_ntop = yang_util.ipv4_pton, yang_util.ipv4_ntop
+
+   local uint32_t = ffi.typeof('uint32_t')
+   local uint32_ptr_t = ffi.typeof("$*", uint32_t)
+
+
+
    local graph = config.new()
 
    local neighbour_key = ffi.typeof('struct { uint32_t index; }')
-   local v4_routes     = cltable.new({ key_type = ffi.typeof('uint32_t') })
+   local v4_routes     = cltable.new({ key_type = uint32_t })
    local v4_neighbours = cltable.new({ key_type = neighbour_key })
 
    for i = 1, 254 do

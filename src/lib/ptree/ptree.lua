@@ -508,27 +508,34 @@ function Manager:notify_pre_update (config, verb, path, ...)
 end
 
 function Manager:update_configuration (update_fn, verb, path, ...)
+   print("UPDATE ", verb, path, unpack(...))
+
    self:notify_pre_update(self.current_configuration, verb, path, ...)
    local to_restart =
       self.support.compute_apps_to_restart_after_configuration_update (
          self.schema_name, self.current_configuration, verb, path,
          self.current_in_place_dependencies, ...)
    local new_config = update_fn(self.current_configuration, ...)
+   
+   for k, v in pairs(new_config.interfaces.interface) do
+      print('INTERFACE ', k, v.name)
+   end
+
    local new_graphs = self.setup_fn(new_config, ...)
    for id, graph in pairs(new_graphs) do
+      print("GRAPH ", id, graph)
       if self.workers[id] == nil then
 	      self:start_worker_for_graph(id, graph)
       end
    end
-
    for id, worker in pairs(self.workers) do
       if new_graphs[id] == nil then
          self:stop_worker(id)
       else
-	 local actions = self.support.compute_config_actions(
-	    worker.graph, new_graphs[id], to_restart, verb, path, ...)
-	 self:enqueue_config_actions_for_worker(id, actions)
-	 worker.graph = new_graphs[id]
+	      local actions = self.support.compute_config_actions(
+            worker.graph, new_graphs[id], to_restart, verb, path, ...)
+	      self:enqueue_config_actions_for_worker(id, actions)
+	      worker.graph = new_graphs[id]
       end
    end
    self.current_configuration = new_config
@@ -572,7 +579,6 @@ function Manager:apply_translated_rpc_updates (updates)
 end
 function Manager:foreign_rpc_get_config (schema_name, path, format,
                                         print_default)
-   print('Foreign get')
    path = path_mod.normalize_path(path)
    local translate = self:get_translator(schema_name)
    local foreign_config = translate.get_config(self.current_configuration)
@@ -590,7 +596,6 @@ function Manager:foreign_rpc_get_state (schema_name, path, format,
    return { state = call_with_output_string(printer, foreign_state) }
 end
 function Manager:foreign_rpc_set_config (schema_name, path, config_str)
-   print('Foreign set')
    path = path_mod.normalize_path(path)
    local translate = self:get_translator(schema_name)
    local parser = path_data.parser_for_schema_by_name(schema_name, path)
@@ -600,7 +605,6 @@ function Manager:foreign_rpc_set_config (schema_name, path, config_str)
    return self:apply_translated_rpc_updates(updates)
 end
 function Manager:foreign_rpc_add_config (schema_name, path, config_str)
-   print('Foreign add')
    path = path_mod.normalize_path(path)
    local translate = self:get_translator(schema_name)
    local parser = path_data.parser_for_schema_by_name(schema_name, path)
@@ -610,7 +614,6 @@ function Manager:foreign_rpc_add_config (schema_name, path, config_str)
    return self:apply_translated_rpc_updates(updates)
 end
 function Manager:foreign_rpc_remove_config (schema_name, path)
-   print('Foreign remove')
    path = path_mod.normalize_path(path)
    local translate = self:get_translator(schema_name)
    local updates = translate.remove_config(self.current_configuration, path)
